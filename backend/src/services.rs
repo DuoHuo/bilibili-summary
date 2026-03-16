@@ -1,7 +1,13 @@
 use hound::WavReader;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::{fs, path::Path, path::PathBuf, process::Command};
+use std::{
+  fs,
+  path::Path,
+  path::PathBuf,
+  process::Command,
+  time::{SystemTime, UNIX_EPOCH}
+};
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 use tracing::{error, info, warn};
@@ -27,7 +33,8 @@ pub struct TranscriptSegment {
 #[serde(rename_all = "snake_case")]
 pub enum TranscriptSource {
   Subtitle,
-  Whisper
+  Whisper,
+  WhisperRefined
 }
 
 // 统一字幕载体
@@ -465,10 +472,25 @@ pub async fn transcribe_with_whisper(
   })
 }
 
+fn build_whisper_audio_name(url: &str) -> Result<String, String> {
+  if let Some(video_id) = parse_bilibili_id(url) {
+    return Ok(video_id);
+  }
+  if let Some(video_id) = parse_youtube_id(url) {
+    return Ok(format!("youtube-{video_id}"));
+  }
+  let nanos = SystemTime::now()
+    .duration_since(UNIX_EPOCH)
+    .map_err(|_| "生成音频文件名失败".to_string())?
+    .as_nanos();
+  Ok(format!("audio-{nanos}"))
+}
+
 fn download_audio_with_ytdlp(url: &str, cookie: Option<&str>, output_dir: &Path) -> Result<PathBuf, String> {
   // 使用 yt-dlp 拉取音频并转为 16k 单声道 wav
+  let output_name = build_whisper_audio_name(url)?;
   let output_template = output_dir
-    .join("audio.%(ext)s")
+    .join(format!("{output_name}.%(ext)s"))
     .to_string_lossy()
     .to_string();
 
@@ -512,6 +534,11 @@ fn download_audio_with_ytdlp(url: &str, cookie: Option<&str>, output_dir: &Path)
 
   if !status.success() {
     return Err("下载音频失败，请检查 yt-dlp 输出".to_string());
+  }
+
+  let wav_path = output_dir.join(format!("{output_name}.wav"));
+  if wav_path.exists() {
+    return Ok(wav_path);
   }
 
   let mut wav_path = None;
@@ -743,6 +770,7 @@ pub fn format_transcript_source(source: TranscriptSource) -> &'static str {
   // 字幕来源文本化
   match source {
     TranscriptSource::Subtitle => "平台字幕",
-    TranscriptSource::Whisper => "本地 Whisper 转写"
+    TranscriptSource::Whisper => "本地 Whisper 转写",
+    TranscriptSource::WhisperRefined => "本地 Whisper 转写（模型润色）"
   }
 }

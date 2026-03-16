@@ -22,7 +22,7 @@ interface UserConfig {
   baseUrl: string
   prompt: string
   cookie: string
-  sttLanguage: "zh" | "en"
+  sttLanguage: "zh-cn" | "en"
 }
 
 const CONFIG_DB_NAME = "siriusx-summary"
@@ -80,7 +80,7 @@ function App() {
   const [baseUrl, setBaseUrl] = useState("")
   const [prompt, setPrompt] = useState(DEFAULT_PROMPT)
   const [cookie, setCookie] = useState("")
-  const [sttLanguage, setSttLanguage] = useState<"zh" | "en">("zh")
+  const [sttLanguage, setSttLanguage] = useState<"zh-cn" | "en">("zh-cn")
   const [result, setResult] = useState<SummarizeResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -102,7 +102,7 @@ function App() {
         setBaseUrl(config.baseUrl)
         setPrompt(config.prompt || DEFAULT_PROMPT)
         setCookie(config.cookie || "")
-        setSttLanguage(config.sttLanguage || "zh")
+        setSttLanguage(config.sttLanguage || "zh-cn")
         setConfigReady(true)
       })
       .catch(() => {
@@ -164,7 +164,8 @@ function App() {
           base_url: baseUrl || null,
           prompt: prompt || null,
           cookie: cookie || null,
-          stt_language: sttLanguage
+          stt_language: sttLanguage,
+          refine_transcript: true
         })
       })
 
@@ -277,9 +278,9 @@ function App() {
                 <span>转写语言</span>
                 <select
                   value={sttLanguage}
-                  onChange={(event) => setSttLanguage(event.target.value as "zh" | "en")}
+                  onChange={(event) => setSttLanguage(event.target.value as "zh-cn" | "en")}
                 >
-                  <option value="zh">中文</option>
+                  <option value="zh-cn">中文（简体）</option>
                   <option value="en">英文</option>
                 </select>
               </label>

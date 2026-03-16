@@ -37,7 +37,8 @@ pub struct SummarizeRequest {
   pub base_url: Option<String>,
   pub prompt: Option<String>,
   pub cookie: Option<String>,
-  pub stt_language: Option<String>
+  pub stt_language: Option<String>,
+  pub refine_transcript: Option<bool>
 }
 
 // 响应体：结构化摘要 + Markdown/HTML
@@ -173,6 +174,7 @@ fn build_flow_context(request: &SummarizeRequest) -> Context {
   context.set("prompt", json!(request.prompt));
   context.set("cookie", json!(request.cookie));
   context.set("stt_language", json!(request.stt_language));
+  context.set("refine_transcript", json!(request.refine_transcript.unwrap_or(true)));
   context
 }
 
@@ -202,6 +204,14 @@ fn context_optional_source(context: &Context, key: &str) -> Option<TranscriptSou
   serde_json::from_value::<TranscriptSource>(value.clone()).ok()
 }
 
+// 读取可选布尔字段
+fn context_optional_bool(context: &Context, key: &str) -> bool {
+  context
+    .get(key)
+    .and_then(|value| value.as_bool())
+    .unwrap_or(false)
+}
+
 // 写入字幕信息到 Context
 fn set_transcript_context(
   context: &mut Context,
@@ -212,6 +222,54 @@ fn set_transcript_context(
   context.set("transcript_text", json!(transcript_text));
   context.set("transcript_segments", json!(transcript_segments));
   context.set("transcript_source", json!(transcript_source));
+}
+
+// 调用大模型润色 Whisper 字幕
+async fn refine_transcript_with_llm(
+  api_key: &str,
+  model: Option<&str>,
+  base_url: Option<&str>,
+  title: &str,
+  transcript: &str
+) -> Result<String> {
+  let prompt = format!(
+    "你是专业字幕润色助手，请基于视频标题与字幕进行润色，要求：\n1. 保留原意与时间顺序\n2. 修正明显错别字与断句\n3. 保持口语化但更通顺\n4. 不要添加不存在的信息\n\n标题：{title}\n\n字幕：\n{transcript}\n",
+    title = title,
+    transcript = transcript
+  );
+  let client = Client::builder().user_agent("SiriusX Summary/0.1").build()?;
+  let refined = call_llm(&client, api_key, model, base_url, &prompt)
+    .await
+    .map_err(|err| anyhow!(err))?;
+  Ok(refined)
+}
+
+// 将润色后的文本回填到片段文本中
+fn apply_refined_transcript(
+  original_segments: Vec<TranscriptSegment>,
+  refined_text: &str
+) -> Vec<TranscriptSegment> {
+  let refined_lines: Vec<&str> = refined_text
+    .lines()
+    .map(|line| line.trim())
+    .filter(|line| !line.is_empty())
+    .collect();
+  if refined_lines.is_empty() {
+    return original_segments;
+  }
+
+  let mut refined_iter = refined_lines.into_iter();
+  original_segments
+    .into_iter()
+    .map(|segment| {
+      let replacement = refined_iter.next().unwrap_or(segment.text.as_str());
+      TranscriptSegment {
+        start: segment.start,
+        end: segment.end,
+        text: replacement.to_string()
+      }
+    })
+    .collect()
 }
 
 // 节点：平台识别
@@ -456,6 +514,36 @@ impl Node for CallLlmNode {
     let model = context_optional_string(context, "model");
     let base_url = context_optional_string(context, "base_url");
     let prompt = context_required_string(context, "prompt_text")?;
+    let title = context_required_string(context, "title")?;
+    let transcript_text = context_required_string(context, "transcript_text")?;
+    let transcript_source = context_optional_source(context, "transcript_source")
+      .ok_or_else(|| anyhow!("字幕来源缺失"))?;
+    let refine_transcript = context_optional_bool(context, "refine_transcript");
+    let mut refined_text = None;
+    let mut refined_segments = None;
+    let mut refined_source = transcript_source;
+
+    if refine_transcript && matches!(transcript_source, TranscriptSource::Whisper) {
+      info!("✨ CallLlmNode 开始润色 Whisper 字幕: title={}", title);
+      let refined = refine_transcript_with_llm(
+        &api_key,
+        model.as_deref(),
+        base_url.as_deref(),
+        &title,
+        &transcript_text
+      )
+      .await
+      .map_err(|err| anyhow!(err))?;
+      if !refined.trim().is_empty() {
+        let segments = context_optional_segments(context, "transcript_segments")
+          .ok_or_else(|| anyhow!("字幕片段缺失"))?;
+        refined_segments = Some(apply_refined_transcript(segments, &refined));
+        refined_text = Some(refined);
+        refined_source = TranscriptSource::WhisperRefined;
+        info!("✅ CallLlmNode Whisper 字幕润色完成");
+      }
+    }
+
     info!(
       "🤖 CallLlmNode 请求: model={}, base_url={}, prompt_len={}",
       model.as_deref().unwrap_or("默认"),
@@ -469,7 +557,10 @@ impl Node for CallLlmNode {
 
     info!("✅ CallLlmNode 生成摘要完成: length={}", summary.len());
     Ok(json!({
-      "summary": summary
+      "summary": summary,
+      "refined_transcript_text": refined_text,
+      "refined_transcript_segments": refined_segments,
+      "refined_transcript_source": refined_source
     }))
   }
 
@@ -485,7 +576,26 @@ impl Node for CallLlmNode {
           .get("summary")
           .and_then(|item| item.as_str())
           .ok_or_else(|| anyhow!("模型总结失败"))?;
+        let refined_text = value
+          .get("refined_transcript_text")
+          .and_then(|item| item.as_str())
+          .map(|text| text.to_string());
+        let refined_segments = value
+          .get("refined_transcript_segments")
+          .and_then(|item| serde_json::from_value::<Vec<TranscriptSegment>>(item.clone()).ok());
+        let refined_source = value
+          .get("refined_transcript_source")
+          .and_then(|item| serde_json::from_value::<TranscriptSource>(item.clone()).ok());
         context.set("summary", json!(summary));
+        if let Some(refined_text) = refined_text {
+          context.set("transcript_text", json!(refined_text));
+        }
+        if let Some(refined_segments) = refined_segments {
+          context.set("transcript_segments", json!(refined_segments));
+        }
+        if let Some(refined_source) = refined_source {
+          context.set("transcript_source", json!(refined_source));
+        }
         Ok(ProcessResult::new(WorkflowState::SummaryReady, "summary_ready".to_string()))
       }
       Err(err) => Err(anyhow!(err.to_string()))
