@@ -1,33 +1,33 @@
-mod models;
-mod routes;
-mod services;
-mod utils;
-
-use axum::{
-  routing::post,
-  Router
-};
+use axum::{routing::post, Router};
 use reqwest::Client;
 use std::{net::SocketAddr, sync::Arc};
 use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
+use tracing_subscriber::EnvFilter;
 
-use crate::models::AppState;
-use crate::routes::summarize;
+// 后端模块分层：入口(main) + 路由/流程(summarize) + 业务(services) + 工具(utils)
+mod services;
+mod summarize;
+mod utils;
 
+use crate::summarize::{summarize, AppState};
+
+// 服务启动入口：初始化日志、HTTP 客户端、路由与 CORS
 #[tokio::main]
 async fn main() {
   tracing_subscriber::fmt()
-    .with_env_filter("memflow=info")
+    .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
     .init();
 
   let state = AppState {
+    // 统一设置 User-Agent，便于平台请求识别
     http: Client::builder()
-      .user_agent("Memflow/0.1")
+      .user_agent("SiriusX Summary/0.1")
       .build()
       .expect("http client")
   };
 
+  // 注册路由并开启 CORS，便于前端跨域访问
   let app = Router::new()
     .route("/api/summarize", post(summarize))
     .layer(
@@ -38,6 +38,7 @@ async fn main() {
     )
     .with_state(Arc::new(state));
 
+  // 监听端口并启动服务
   let addr = SocketAddr::from(([0, 0, 0, 0], 8787));
   info!("✅ backend listening on {}", addr);
 

@@ -10,6 +10,7 @@ interface SummarizeResult {
   title: string
   summary: string
   markdown: string
+  html: string
   transcript?: string | null
   transcript_segments?: TranscriptSegment[] | null
   transcript_source?: "subtitle" | "whisper" | null
@@ -24,7 +25,7 @@ interface UserConfig {
   sttLanguage: "zh" | "en"
 }
 
-const CONFIG_DB_NAME = "memflow"
+const CONFIG_DB_NAME = "siriusx-summary"
 const CONFIG_STORE = "user-config"
 
 function safeParseJson(value: string) {
@@ -209,11 +210,24 @@ function App() {
     URL.revokeObjectURL(url)
   }
 
+  const handleDownloadHtml = () => {
+    if (!result) {
+      return
+    }
+    const blob = new Blob([result.html], { type: "text/html;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = `${result.title || "bilibili"}.html`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="page">
       <header className="header">
         <div>
-          <p className="badge">Memflow Summary</p>
+          <p className="badge">SiriusX Summary</p>
           <h1>B 站 / YouTube 视频 AI 总结</h1>
           <p className="subtitle">输入链接与 API Key，即可生成结构化总结</p>
         </div>
@@ -333,8 +347,15 @@ function App() {
                 <button type="button" onClick={handleDownload}>
                   下载 Markdown
                 </button>
+                <button type="button" onClick={handleDownloadHtml}>
+                  下载 HTML
+                </button>
               </div>
               <pre className="markdown">{result.markdown}</pre>
+              <details className="transcript">
+                <summary>预览 HTML</summary>
+                <pre>{result.html}</pre>
+              </details>
               {result.transcript ? (
                 <details className="transcript">
                   <summary>查看字幕</summary>

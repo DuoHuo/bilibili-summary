@@ -1,27 +1,51 @@
-# SiriusX Summary Web (Frontend + Rust Backend)
+# SiriusX Summary Web
 
-本项目是一个前后端可部署的应用：
+SiriusX Summary Web 是一个前后端可部署的摘要应用：
 - 前端：React + Vite
 - 后端：Rust + Axum
+
+本项目在思路与体验上受到 [BibiGPT-v1](https://github.com/JimmyLv/BibiGPT-v1) 与 [BiliNote](https://github.com/JefferyHcool/BiliNote) 启发，感谢这些开源项目的探索与贡献。
+
+## 功能概览
+
+- 支持 B 站 / YouTube 链接摘要
+- 生成摘要与结构化 Markdown
+- 支持自定义模型与 API Endpoint
+- 支持本地字幕/音频转写
 
 ## 目录结构
 
 ```
 siriusx-summary/
 ├── frontend/   # React + Vite
-└── backend/    # Rust + Axum
+├── backend/    # Rust + Axum
+└── start.sh    # 一键启动脚本
 ```
 
-## 后端启动
+## 一键启动
+
+```bash
+bash start.sh
+```
+
+脚本会自动完成：
+1. 安装前端依赖
+2. 构建后端依赖
+3. 启动后端服务
+4. 启动前端开发服务器
+
+## 手动启动
+
+### 后端
 
 ```bash
 cd backend
 cargo run
 ```
 
-默认服务端口：`http://localhost:8787`
+默认端口：`http://localhost:8787`
 
-## 前端启动
+### 前端
 
 ```bash
 cd frontend
@@ -29,7 +53,7 @@ pnpm install
 pnpm dev
 ```
 
-前端默认端口：`http://localhost:5173`
+默认端口：`http://localhost:5173`
 
 ## 环境变量
 
@@ -41,10 +65,10 @@ VITE_API_BASE=http://localhost:8787
 
 ## 依赖准备
 
-后端本地转写依赖以下工具：
+后端本地转写依赖：
 
-- `yt-dlp`：用于下载 B 站 / YouTube 音频
-- `ffmpeg`：用于音频转码（`yt-dlp` 需要）
+- `yt-dlp`：下载音频
+- `ffmpeg`：音频转码
 - Whisper 模型：默认读取 `models/ggml-base.bin`，可通过 `WHISPER_MODEL_PATH` 指定
 
 ```bash

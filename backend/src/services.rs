@@ -1,30 +1,118 @@
-use chrono::Local;
 use hound::WavReader;
 use reqwest::Client;
+use serde::{Deserialize, Serialize};
 use std::{fs, path::Path, path::PathBuf, process::Command};
-use tempfile::TempDir;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
-use tracing::info;
+use tracing::{error, info, warn};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext};
 
-use crate::models::{
-  BiliSubtitleBody,
-  BiliSubtitleGroup,
-  BiliSubtitleIndexResponse,
-  BiliViewResponse,
-  OpenAIResponse,
-  Platform,
-  Transcript,
-  TranscriptSegment,
-  TranscriptSource,
-  YoutubeOEmbed
-};
+// 平台枚举
+#[derive(Clone, Copy)]
+pub enum Platform {
+  Bilibili,
+  Youtube
+}
+
+// 字幕片段结构
+#[derive(Serialize, Deserialize, Clone)]
+pub struct TranscriptSegment {
+  pub start: f64,
+  pub end: f64,
+  pub text: String
+}
+
+// 字幕来源
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum TranscriptSource {
+  Subtitle,
+  Whisper
+}
+
+// 统一字幕载体
+#[derive(Clone)]
+pub struct Transcript {
+  pub text: String,
+  pub segments: Vec<TranscriptSegment>,
+  pub source: TranscriptSource
+}
+
+// YouTube 标题响应
+#[derive(Deserialize)]
+pub struct YoutubeOEmbed {
+  pub title: Option<String>
+}
+
+// OpenAI 响应结构
+#[derive(Deserialize)]
+pub struct OpenAIResponse {
+  pub choices: Vec<OpenAIChoice>
+}
+
+#[derive(Deserialize)]
+pub struct OpenAIChoice {
+  pub message: OpenAIMessage
+}
+
+#[derive(Deserialize)]
+pub struct OpenAIMessage {
+  pub role: String,
+  pub content: String
+}
+
 use crate::utils::{format_transcript_with_timestamps, parse_youtube_subtitles_xml};
 
+// B 站与 YouTube 字幕抓取/转写相关服务
+#[derive(Deserialize)]
+pub struct BiliViewResponse {
+  pub data: Option<BiliViewData>
+}
+
+#[derive(Deserialize)]
+pub struct BiliViewData {
+  pub title: Option<String>,
+  pub cid: Option<u64>
+}
+
+#[derive(Deserialize)]
+pub struct BiliSubtitleIndexResponse {
+  pub data: Option<BiliSubtitleIndexData>
+}
+
+#[derive(Deserialize)]
+pub struct BiliSubtitleIndexData {
+  pub subtitle: Option<BiliSubtitleGroup>
+}
+
+#[derive(Deserialize)]
+pub struct BiliSubtitleGroup {
+  pub subtitles: Option<Vec<BiliSubtitleItem>>,
+  pub ai_subtitle: Option<BiliSubtitleItem>
+}
+
+#[derive(Deserialize)]
+pub struct BiliSubtitleItem {
+  pub subtitle_url: Option<String>
+}
+
+#[derive(Deserialize)]
+pub struct BiliSubtitleBodyEntry {
+  pub content: Option<String>,
+  pub from: Option<f64>,
+  pub to: Option<f64>
+}
+
+#[derive(Deserialize)]
+pub struct BiliSubtitleBody {
+  pub body: Option<Vec<BiliSubtitleBodyEntry>>
+}
+
+// 平台识别：支持 B 站与 YouTube
 pub fn detect_platform(url: &str) -> Result<Platform, String> {
   let parsed = url::Url::parse(url).map_err(|_| "无效的链接".to_string())?;
   let host = parsed.host_str().unwrap_or_default();
+  info!("🔍 平台识别: host={}", host);
   if host.contains("bilibili.com") {
     return Ok(Platform::Bilibili);
   }
@@ -34,6 +122,7 @@ pub fn detect_platform(url: &str) -> Result<Platform, String> {
   Err("暂不支持该链接，请输入 B 站或 YouTube 视频链接".to_string())
 }
 
+// B 站：获取视频标题与字幕
 pub async fn summarize_bilibili(client: &Client, url: &str) -> Result<(String, Option<Transcript>), String> {
   let video_id = parse_bilibili_id(url).ok_or_else(|| "无效的 B 站链接".to_string())?;
   info!("🔍 解析 B 站链接完成: {}", video_id);
@@ -42,9 +131,15 @@ pub async fn summarize_bilibili(client: &Client, url: &str) -> Result<(String, O
   info!("✅ 获取视频信息成功: {} (cid: {})", title, cid);
 
   let transcript = fetch_bilibili_subtitles(client, &video_id, cid).await?;
+  if transcript.is_some() {
+    info!("✅ B 站字幕获取成功: {}", title);
+  } else {
+    warn!("⚠️ B 站字幕不存在或为空: {}", title);
+  }
   Ok((title, transcript))
 }
 
+// YouTube：获取视频标题与字幕
 pub async fn summarize_youtube(client: &Client, url: &str) -> Result<(String, Option<Transcript>), String> {
   let video_id = parse_youtube_id(url).ok_or_else(|| "无效的 YouTube 链接".to_string())?;
   info!("🔍 解析 YouTube 链接完成: {}", video_id);
@@ -53,6 +148,11 @@ pub async fn summarize_youtube(client: &Client, url: &str) -> Result<(String, Op
   info!("✅ 获取视频信息成功: {}", title);
 
   let transcript = fetch_youtube_subtitles(client, &video_id).await?;
+  if transcript.is_some() {
+    info!("✅ YouTube 字幕获取成功: {}", title);
+  } else {
+    warn!("⚠️ YouTube 字幕不存在或为空: {}", title);
+  }
   Ok((title, transcript))
 }
 
@@ -88,25 +188,37 @@ fn parse_youtube_id(url: &str) -> Option<String> {
 }
 
 async fn fetch_bilibili_meta(client: &Client, bvid: &str) -> Result<(String, u64), String> {
+  // B 站元信息接口
   let url = format!("https://api.bilibili.com/x/web-interface/view?bvid={}", bvid);
+  info!("🔗 请求 B 站元信息: {}", url);
   let resp = client
     .get(url)
     .send()
     .await
-    .map_err(|_| "获取视频信息失败".to_string())?;
+    .map_err(|err| {
+      error!("❌ 获取 B 站视频信息失败: {}", err);
+      "获取视频信息失败".to_string()
+    })?;
 
   if !resp.status().is_success() {
+    warn!("⚠️ B 站元信息状态异常: {}", resp.status());
     return Err("获取视频信息失败".to_string());
   }
 
   let data = resp
     .json::<BiliViewResponse>()
     .await
-    .map_err(|_| "解析视频信息失败".to_string())?;
+    .map_err(|err| {
+      error!("❌ 解析 B 站视频信息失败: {}", err);
+      "解析视频信息失败".to_string()
+    })?;
 
   let info = data
     .data
-    .ok_or_else(|| "视频信息为空".to_string())?;
+    .ok_or_else(|| {
+      warn!("⚠️ B 站视频信息为空");
+      "视频信息为空".to_string()
+    })?;
 
   let title = info.title.unwrap_or_else(|| "未命名视频".to_string());
   let cid = info.cid.ok_or_else(|| "视频 CID 不存在".to_string())?;
@@ -119,24 +231,33 @@ async fn fetch_bilibili_subtitles(
   bvid: &str,
   cid: u64
 ) -> Result<Option<Transcript>, String> {
+  // B 站字幕索引接口
   let url = format!(
     "https://api.bilibili.com/x/player/v2?bvid={}&cid={}",
     bvid, cid
   );
+  info!("🔗 请求 B 站字幕索引: {}", url);
   let resp = client
     .get(url)
     .send()
     .await
-    .map_err(|_| "获取字幕索引失败".to_string())?;
+    .map_err(|err| {
+      error!("❌ 获取字幕索引失败: {}", err);
+      "获取字幕索引失败".to_string()
+    })?;
 
   if !resp.status().is_success() {
+    warn!("⚠️ B 站字幕索引状态异常: {}", resp.status());
     return Err("获取字幕索引失败".to_string());
   }
 
   let data = resp
     .json::<BiliSubtitleIndexResponse>()
     .await
-    .map_err(|_| "解析字幕索引失败".to_string())?;
+    .map_err(|err| {
+      error!("❌ 解析字幕索引失败: {}", err);
+      "解析字幕索引失败".to_string()
+    })?;
 
   let subtitles_group = data
     .data
@@ -172,16 +293,23 @@ async fn fetch_bilibili_subtitles(
     .get(subtitle_url)
     .send()
     .await
-    .map_err(|_| "获取字幕内容失败".to_string())?;
+    .map_err(|err| {
+      error!("❌ 获取字幕内容失败: {}", err);
+      "获取字幕内容失败".to_string()
+    })?;
 
   if !body_resp.status().is_success() {
+    warn!("⚠️ B 站字幕内容状态异常: {}", body_resp.status());
     return Err("获取字幕内容失败".to_string());
   }
 
   let body = body_resp
     .json::<BiliSubtitleBody>()
     .await
-    .map_err(|_| "解析字幕内容失败".to_string())?;
+    .map_err(|err| {
+      error!("❌ 解析字幕内容失败: {}", err);
+      "解析字幕内容失败".to_string()
+    })?;
 
   let mut segments = body
     .body
@@ -201,6 +329,7 @@ async fn fetch_bilibili_subtitles(
     .collect::<Vec<_>>();
 
   if segments.is_empty() {
+    warn!("⚠️ B 站字幕解析为空");
     return Ok(None);
   }
 
@@ -213,29 +342,41 @@ async fn fetch_bilibili_subtitles(
 }
 
 async fn fetch_youtube_title(client: &Client, url: &str) -> Result<String, String> {
+  // YouTube OEmbed 获取标题
   let endpoint = format!("https://www.youtube.com/oembed?url={}&format=json", url);
+  info!("🔗 请求 YouTube 标题: {}", endpoint);
   let resp = client
     .get(endpoint)
     .send()
     .await
-    .map_err(|_| "获取 YouTube 标题失败".to_string())?;
+    .map_err(|err| {
+      error!("❌ 获取 YouTube 标题失败: {}", err);
+      "获取 YouTube 标题失败".to_string()
+    })?;
 
   if !resp.status().is_success() {
+    warn!("⚠️ YouTube 标题状态异常: {}", resp.status());
     return Err("获取 YouTube 标题失败".to_string());
   }
 
   let data = resp
     .json::<YoutubeOEmbed>()
     .await
-    .map_err(|_| "解析 YouTube 标题失败".to_string())?;
+    .map_err(|err| {
+      error!("❌ 解析 YouTube 标题失败: {}", err);
+      "解析 YouTube 标题失败".to_string()
+    })?;
 
   Ok(data.title.unwrap_or_else(|| "未命名视频".to_string()))
 }
 
 async fn fetch_youtube_subtitles(client: &Client, video_id: &str) -> Result<Option<Transcript>, String> {
+  // 优先中文，其次英文字幕
   let languages = ["zh-Hans", "zh", "en"];
   for language in languages {
+    info!("🔍 尝试 YouTube 字幕语言: {}", language);
     if let Some(segments) = fetch_youtube_subtitles_by_language(client, video_id, language, false).await? {
+      info!("✅ YouTube 字幕获取成功: lang={}, asr=false", language);
       return Ok(Some(Transcript {
         text: format_transcript_with_timestamps(&segments),
         segments,
@@ -243,6 +384,7 @@ async fn fetch_youtube_subtitles(client: &Client, video_id: &str) -> Result<Opti
       }));
     }
     if let Some(segments) = fetch_youtube_subtitles_by_language(client, video_id, language, true).await? {
+      info!("✅ YouTube 字幕获取成功: lang={}, asr=true", language);
       return Ok(Some(Transcript {
         text: format_transcript_with_timestamps(&segments),
         segments,
@@ -250,6 +392,7 @@ async fn fetch_youtube_subtitles(client: &Client, video_id: &str) -> Result<Opti
       }));
     }
   }
+  warn!("⚠️ 未找到可用的 YouTube 字幕");
   Ok(None)
 }
 
@@ -259,25 +402,34 @@ async fn fetch_youtube_subtitles_by_language(
   language: &str,
   use_asr: bool
 ) -> Result<Option<Vec<TranscriptSegment>>, String> {
+  // YouTube 字幕接口，use_asr 表示自动字幕
   let asr_suffix = if use_asr { "&kind=asr" } else { "" };
   let url = format!(
     "https://video.google.com/timedtext?lang={}&v={}&fmt=srv3{}",
     language, video_id, asr_suffix
   );
+  info!("🔗 请求 YouTube 字幕: {}", url);
   let resp = client
     .get(url)
     .send()
     .await
-    .map_err(|_| "获取 YouTube 字幕失败".to_string())?;
+    .map_err(|err| {
+      error!("❌ 获取 YouTube 字幕失败: {}", err);
+      "获取 YouTube 字幕失败".to_string()
+    })?;
 
   if !resp.status().is_success() {
+    warn!("⚠️ YouTube 字幕状态异常: {}", resp.status());
     return Ok(None);
   }
 
   let xml = resp
     .text()
     .await
-    .map_err(|_| "解析 YouTube 字幕失败".to_string())?;
+    .map_err(|err| {
+      error!("❌ 解析 YouTube 字幕失败: {}", err);
+      "解析 YouTube 字幕失败".to_string()
+    })?;
 
   let segments = parse_youtube_subtitles_xml(&xml);
   if segments.is_empty() {
@@ -287,20 +439,25 @@ async fn fetch_youtube_subtitles_by_language(
   }
 }
 
+// Whisper 转写入口：下载音频后进行本地转写
 pub async fn transcribe_with_whisper(
   url: &str,
   cookie: Option<&str>,
   language: Option<&str>
 ) -> Result<Transcript, String> {
+  info!("🎧 Whisper 转写开始: url={}", url);
   let resources_dir = PathBuf::from("resources");
   fs::create_dir_all(&resources_dir)
     .map_err(|_| "创建资源目录失败".to_string())?;
   let audio_path = download_audio_with_ytdlp(url, cookie, &resources_dir)?;
+  info!("🎧 音频下载完成: {}", audio_path.display());
   let segments = transcribe_audio_segments(&audio_path, language).await?;
   if segments.is_empty() {
+    warn!("⚠️ Whisper 转写结果为空");
     return Err("Whisper 转写结果为空".to_string());
   }
 
+  info!("✅ Whisper 转写完成: segments={}", segments.len());
   Ok(Transcript {
     text: format_transcript_with_timestamps(&segments),
     segments,
@@ -309,6 +466,7 @@ pub async fn transcribe_with_whisper(
 }
 
 fn download_audio_with_ytdlp(url: &str, cookie: Option<&str>, output_dir: &Path) -> Result<PathBuf, String> {
+  // 使用 yt-dlp 拉取音频并转为 16k 单声道 wav
   let output_template = output_dir
     .join("audio.%(ext)s")
     .to_string_lossy()
@@ -374,6 +532,7 @@ async fn transcribe_audio_segments(
   path: &Path,
   language: Option<&str>
 ) -> Result<Vec<TranscriptSegment>, String> {
+  // 调用 whisper-rs 对音频进行转写
   let model_path = resolve_whisper_model_path().await?;
   let mut reader = WavReader::open(path).map_err(|_| "读取音频失败".to_string())?;
   let spec = reader.spec();
@@ -431,17 +590,21 @@ async fn transcribe_audio_segments(
 }
 
 async fn resolve_whisper_model_path() -> Result<PathBuf, String> {
+  // 本地缓存模型，不存在则下载
   let models_dir = PathBuf::from("models");
   fs::create_dir_all(&models_dir)
     .map_err(|_| "创建 models 目录失败".to_string())?;
   let model_path = models_dir.join("ggml-base.bin");
   if model_path.exists() {
+    info!("✅ Whisper 模型已存在: {}", model_path.display());
     return Ok(model_path);
   }
 
+  info!("⬇️ 开始下载 Whisper 模型: {}", model_path.display());
   download_whisper_model(&model_path).await?;
 
   if model_path.exists() {
+    info!("✅ Whisper 模型下载完成: {}", model_path.display());
     Ok(model_path)
   } else {
     Err("下载 Whisper 模型失败".to_string())
@@ -449,33 +612,49 @@ async fn resolve_whisper_model_path() -> Result<PathBuf, String> {
 }
 
 async fn download_whisper_model(model_path: &Path) -> Result<(), String> {
+  // 远程下载 Whisper 模型
   let url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin";
+  info!("⬇️ 请求 Whisper 模型: {}", url);
   let response = Client::new()
     .get(url)
     .send()
     .await
-    .map_err(|_| "下载 Whisper 模型失败".to_string())?;
+    .map_err(|err| {
+      error!("❌ 下载 Whisper 模型失败: {}", err);
+      "下载 Whisper 模型失败".to_string()
+    })?;
 
   if !response.status().is_success() {
+    warn!("⚠️ Whisper 模型下载状态异常: {}", response.status());
     return Err("下载 Whisper 模型失败".to_string());
   }
 
   let bytes = response
     .bytes()
     .await
-    .map_err(|_| "读取 Whisper 模型失败".to_string())?;
+    .map_err(|err| {
+      error!("❌ 读取 Whisper 模型失败: {}", err);
+      "读取 Whisper 模型失败".to_string()
+    })?;
   let mut file = File::create(model_path)
     .await
-    .map_err(|_| "保存 Whisper 模型失败".to_string())?;
+    .map_err(|err| {
+      error!("❌ 保存 Whisper 模型失败: {}", err);
+      "保存 Whisper 模型失败".to_string()
+    })?;
   file
     .write_all(&bytes)
     .await
-    .map_err(|_| "写入 Whisper 模型失败".to_string())?;
+    .map_err(|err| {
+      error!("❌ 写入 Whisper 模型失败: {}", err);
+      "写入 Whisper 模型失败".to_string()
+    })?;
 
   Ok(())
 }
 
 pub fn build_prompt(title: &str, transcript: &str, custom_prompt: Option<&str>) -> String {
+  // 支持自定义模板注入 title/transcript
   if let Some(custom) = custom_prompt {
     return custom
       .replace("{{title}}", title)
@@ -489,6 +668,7 @@ pub fn build_prompt(title: &str, transcript: &str, custom_prompt: Option<&str>) 
   )
 }
 
+// 调用 OpenAI 兼容接口生成摘要
 pub async fn call_llm(
   client: &Client,
   api_key: &str,
@@ -513,20 +693,30 @@ pub async fn call_llm(
     .json(&body)
     .send()
     .await
-    .map_err(|_| "调用模型失败".to_string())?;
+    .map_err(|err| {
+      error!("❌ 调用模型失败: {}", err);
+      "调用模型失败".to_string()
+    })?;
 
   let status = resp.status();
   let text = resp
     .text()
     .await
-    .map_err(|_| "解析模型响应失败".to_string())?;
+    .map_err(|err| {
+      error!("❌ 解析模型响应失败: {}", err);
+      "解析模型响应失败".to_string()
+    })?;
 
   if !status.is_success() {
+    error!("❌ 模型返回错误: status={}, body={}", status, text);
     return Err("模型调用失败".to_string());
   }
 
-  let data: crate::models::OpenAIResponse = serde_json::from_str(&text)
-    .map_err(|_| "解析模型响应失败".to_string())?;
+  let data: OpenAIResponse = serde_json::from_str(&text)
+    .map_err(|err| {
+      error!("❌ 解析模型响应 JSON 失败: {}", err);
+      "解析模型响应失败".to_string()
+    })?;
 
   let content = data
     .choices
@@ -550,6 +740,7 @@ fn resolve_endpoint(base_url: Option<&str>) -> Result<(String, &'static str), St
 }
 
 pub fn format_transcript_source(source: TranscriptSource) -> &'static str {
+  // 字幕来源文本化
   match source {
     TranscriptSource::Subtitle => "平台字幕",
     TranscriptSource::Whisper => "本地 Whisper 转写"

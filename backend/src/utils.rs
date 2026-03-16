@@ -1,7 +1,8 @@
 use quick_xml::{events::Event, Reader};
 
-use crate::models::TranscriptSegment;
+use crate::services::TranscriptSegment;
 
+// 字幕渲染与解析工具
 pub fn format_transcript_with_timestamps(segments: &[TranscriptSegment]) -> String {
   segments
     .iter()
@@ -18,12 +19,14 @@ pub fn format_transcript_with_timestamps(segments: &[TranscriptSegment]) -> Stri
 }
 
 pub fn format_timestamp(seconds: f64) -> String {
+  // 统一将秒数格式化为 mm:ss
   let total_seconds = seconds.max(0.0).round() as u64;
   let minutes = total_seconds / 60;
   let remaining = total_seconds % 60;
   format!("{:02}:{:02}", minutes, remaining)
 }
 
+// 解析 YouTube XML 字幕为片段列表
 pub fn parse_youtube_subtitles_xml(xml: &str) -> Vec<TranscriptSegment> {
   let mut reader = Reader::from_str(xml);
   let mut buf = Vec::new();
