@@ -450,10 +450,11 @@ async fn fetch_youtube_subtitles_by_language(
 pub async fn transcribe_with_whisper(
   url: &str,
   cookie: Option<&str>,
-  language: Option<&str>
+  language: Option<&str>,
+  run_dir: &Path
 ) -> Result<Transcript, String> {
   info!("🎧 Whisper 转写开始: url={}", url);
-  let resources_dir = PathBuf::from("resources");
+  let resources_dir = run_dir.join("resources");
   fs::create_dir_all(&resources_dir)
     .map_err(|_| "创建资源目录失败".to_string())?;
   let audio_path = download_audio_with_ytdlp(url, cookie, &resources_dir)?;
@@ -553,6 +554,107 @@ fn download_audio_with_ytdlp(url: &str, cookie: Option<&str>, output_dir: &Path)
   }
 
   wav_path.ok_or_else(|| "下载音频失败，未找到 wav 文件".to_string())
+}
+
+pub fn download_video_with_ytdlp(
+  url: &str,
+  cookie: Option<&str>,
+  output_dir: &Path
+) -> Result<PathBuf, String> {
+  let output_name = build_whisper_audio_name(url)?;
+  let output_template = output_dir
+    .join(format!("{output_name}.%(ext)s"))
+    .to_string_lossy()
+    .to_string();
+
+  let mut cookie_path: Option<PathBuf> = None;
+  let mut cookie_header: Option<String> = None;
+  if let Some(cookie_value) = cookie {
+    let trimmed = cookie_value.trim();
+    if !trimmed.is_empty() {
+      if trimmed.contains('=') && trimmed.contains(';') {
+        cookie_header = Some(trimmed.to_string());
+      } else {
+        cookie_path = Some(PathBuf::from(trimmed));
+      }
+    }
+  }
+
+  fs::create_dir_all(output_dir).map_err(|_| "创建视频目录失败".to_string())?;
+
+  let mut command = Command::new("yt-dlp");
+  command
+    .arg("-f")
+    .arg("bestvideo+bestaudio/best")
+    .arg("--merge-output-format")
+    .arg("mp4")
+    .arg("-o")
+    .arg(output_template)
+    .arg(url);
+
+  if let Some(path) = cookie_path {
+    command.arg("--cookies").arg(path);
+  }
+
+  if let Some(header_value) = cookie_header {
+    command.arg("--add-header").arg(format!("Cookie: {header_value}"));
+  }
+
+  let status = command
+    .status()
+    .map_err(|_| "调用 yt-dlp 失败，请确认已安装".to_string())?;
+
+  if !status.success() {
+    return Err("下载视频失败，请检查 yt-dlp 输出".to_string());
+  }
+
+  let mp4_path = output_dir.join(format!("{output_name}.mp4"));
+  if mp4_path.exists() {
+    return Ok(mp4_path);
+  }
+
+  let mut video_path = None;
+  if let Ok(entries) = std::fs::read_dir(output_dir) {
+    for entry in entries.flatten() {
+      let path = entry.path();
+      if path.extension().and_then(|ext| ext.to_str()) == Some("mp4") {
+        video_path = Some(path);
+        break;
+      }
+    }
+  }
+
+  video_path.ok_or_else(|| "下载视频失败，未找到 mp4 文件".to_string())
+}
+
+pub fn generate_screenshot(
+  video_path: &Path,
+  output_dir: &Path,
+  timestamp: u64,
+  index: usize
+) -> Result<PathBuf, String> {
+  fs::create_dir_all(output_dir).map_err(|_| "创建截图目录失败".to_string())?;
+  let filename = format!("screenshot_{index:03}_{timestamp}.jpg");
+  let output_path = output_dir.join(filename);
+  let status = Command::new("ffmpeg")
+    .arg("-ss")
+    .arg(timestamp.to_string())
+    .arg("-i")
+    .arg(video_path)
+    .arg("-frames:v")
+    .arg("1")
+    .arg("-q:v")
+    .arg("2")
+    .arg(&output_path)
+    .arg("-y")
+    .status()
+    .map_err(|_| "调用 ffmpeg 失败，请确认已安装".to_string())?;
+
+  if !status.success() {
+    return Err("截图失败，请检查 ffmpeg 输出".to_string());
+  }
+
+  Ok(output_path)
 }
 
 async fn transcribe_audio_segments(
@@ -680,19 +782,32 @@ async fn download_whisper_model(model_path: &Path) -> Result<(), String> {
   Ok(())
 }
 
-pub fn build_prompt(title: &str, transcript: &str, custom_prompt: Option<&str>) -> String {
+pub fn build_prompt(
+  title: &str,
+  transcript: &str,
+  custom_prompt: Option<&str>,
+  screenshot: bool
+) -> String {
   // 支持自定义模板注入 title/transcript
   if let Some(custom) = custom_prompt {
-    return custom
+    let mut prompt = custom
       .replace("{{title}}", title)
       .replace("{{transcript}}", transcript);
+    if screenshot {
+      prompt.push_str("\n\n8. **Screenshot placeholders**: If a section involves visual demonstrations, code walkthroughs, UI interactions, or any content where visuals aid understanding, insert a screenshot cue at the end of that section:\n- Format: `*Screenshot-[mm:ss]`\n- Only use it when truly helpful.\n");
+    }
+    return prompt;
   }
 
-  format!(
+  let mut prompt = format!(
     "你是一位擅长整理视频的助手。请根据以下内容生成一份结构化总结，并保留关键时间戳：\n\n标题：{title}\n\n字幕：\n{transcript}\n\n总结要求：\n1. 200-400 字\n2. 列出 3-5 个关键要点\n3. 保留关键时间戳（如 01:23）\n4. 用中文输出\n",
     title = title,
     transcript = transcript
-  )
+  );
+  if screenshot {
+    prompt.push_str("\n8. **Screenshot placeholders**: If a section involves visual demonstrations, code walkthroughs, UI interactions, or any content where visuals aid understanding, insert a screenshot cue at the end of that section:\n- Format: `*Screenshot-[mm:ss]`\n- Only use it when truly helpful.\n");
+  }
+  prompt
 }
 
 // 调用 OpenAI 兼容接口生成摘要

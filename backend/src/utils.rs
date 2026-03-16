@@ -1,4 +1,5 @@
 use quick_xml::{events::Event, Reader};
+use regex::Regex;
 
 use crate::services::TranscriptSegment;
 
@@ -91,4 +92,23 @@ pub fn parse_youtube_subtitles_xml(xml: &str) -> Vec<TranscriptSegment> {
   }
 
   segments
+}
+
+pub fn extract_screenshot_markers(markdown: &str) -> Vec<(String, u64)> {
+  let pattern = Regex::new(r"(?:\*Screenshot-(\d{2}):(\d{2})|Screenshot-\[(\d{2}):(\d{2})\])")
+    .expect("screenshot regex");
+  let mut results = Vec::new();
+  for capture in pattern.captures_iter(markdown) {
+    let mm = capture.get(1).or_else(|| capture.get(3));
+    let ss = capture.get(2).or_else(|| capture.get(4));
+    if let (Some(mm), Some(ss)) = (mm, ss) {
+      if let (Ok(mm), Ok(ss)) = (mm.as_str().parse::<u64>(), ss.as_str().parse::<u64>()) {
+        let total = mm * 60 + ss;
+        if let Some(full) = capture.get(0) {
+          results.push((full.as_str().to_string(), total));
+        }
+      }
+    }
+  }
+  results
 }

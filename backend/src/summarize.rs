@@ -2,17 +2,21 @@ use anyhow::{anyhow, Result};
 use axum::{extract::State, http::StatusCode, Json};
 use chrono::Local;
 use pocketflow_rs::{build_flow, Context, Node, ProcessResult, ProcessState};
+use pulldown_cmark::{html, Options, Parser};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 use tracing::{error, info, warn};
+use uuid::Uuid;
 
 use crate::services::{
   build_prompt,
   call_llm,
   detect_platform,
+  download_video_with_ytdlp,
   format_transcript_source,
+  generate_screenshot,
   summarize_bilibili,
   summarize_youtube,
   transcribe_with_whisper,
@@ -20,7 +24,7 @@ use crate::services::{
   TranscriptSegment,
   TranscriptSource
 };
-use crate::utils::format_transcript_with_timestamps;
+use crate::utils::{extract_screenshot_markers, format_transcript_with_timestamps};
 
 // 应用级状态：统一复用 HTTP 客户端
 #[derive(Clone)]
@@ -38,16 +42,20 @@ pub struct SummarizeRequest {
   pub prompt: Option<String>,
   pub cookie: Option<String>,
   pub stt_language: Option<String>,
-  pub refine_transcript: Option<bool>
+  pub refine_transcript: Option<bool>,
+  pub screenshot: Option<bool>
 }
 
 // 响应体：结构化摘要 + Markdown/HTML
 #[derive(Serialize, Deserialize)]
 pub struct SummarizeResponse {
+  pub run_id: String,
   pub title: String,
   pub summary: String,
   pub markdown: String,
   pub html: String,
+  pub html_subtitle: Option<String>,
+  pub html_stamp: Option<String>,
   pub transcript: Option<String>,
   pub transcript_segments: Option<Vec<TranscriptSegment>>,
   pub transcript_source: Option<TranscriptSource>
@@ -79,9 +87,14 @@ pub async fn summarize(
   } else {
     info!("🧭 summarize cookie: 未提供");
   }
+  if payload.screenshot.unwrap_or(false) {
+    info!("🧭 summarize screenshot: 已启用");
+  }
 
   let flow = build_summary_flow();
-  let context = build_flow_context(&payload);
+  let run_id = Uuid::new_v4().to_string();
+  let context = build_flow_context(&payload, &run_id)
+    .map_err(|err| error_response(&err.to_string()))?;
   let result = flow
     .run(context)
     .await
@@ -107,6 +120,248 @@ fn error_response(message: &str) -> (StatusCode, Json<ErrorResponse>) {
       message: message.to_string()
     })
   )
+}
+
+fn resolve_run_dir(run_id: &str) -> Result<PathBuf> {
+  let base = std::env::var("OUTPUT_DIR").unwrap_or_else(|_| "output".to_string());
+  let run_dir = PathBuf::from(base).join(run_id);
+  std::fs::create_dir_all(&run_dir).map_err(|err| anyhow!(err))?;
+  Ok(run_dir)
+}
+
+fn write_output_files(
+  run_dir: &PathBuf,
+  run_id: &str,
+  markdown: &str,
+  html: &str,
+  transcript: &str
+) -> Result<()> {
+  std::fs::write(run_dir.join(format!("summary_{run_id}.md")), markdown)
+    .map_err(|err| anyhow!(err))?;
+  std::fs::write(run_dir.join(format!("summary_{run_id}.html")), html)
+    .map_err(|err| anyhow!(err))?;
+  std::fs::write(run_dir.join(format!("transcript_{run_id}.txt")), transcript)
+    .map_err(|err| anyhow!(err))?;
+  Ok(())
+}
+
+fn strip_markdown_title(markdown: &str) -> String {
+  let mut lines = markdown.lines();
+  let mut result = Vec::new();
+  let mut skipped_title = false;
+  while let Some(line) = lines.next() {
+    if !skipped_title && line.trim_start().starts_with("# ") {
+      skipped_title = true;
+      // skip an optional blank line right after the title
+      if let Some(next) = lines.next() {
+        if !next.trim().is_empty() {
+          result.push(next);
+        }
+      }
+      continue;
+    }
+    result.push(line);
+  }
+  result.join("\n").trim().to_string()
+}
+
+fn render_markdown_html(
+  title: &str,
+  markdown: &str,
+  subtitle: Option<&str>,
+  stamp: Option<&str>
+) -> String {
+  let subtitle = subtitle
+    .map(|value| value.to_string())
+    .unwrap_or_else(|| {
+      std::env::var("SUMMARY_HTML_SUBTITLE")
+        .unwrap_or_else(|_| "东方简约信纸 · SiriusX Summary".to_string())
+    });
+  let stamp = stamp
+    .map(|value| value.to_string())
+    .unwrap_or_else(|| std::env::var("SUMMARY_HTML_STAMP").unwrap_or_else(|_| "摘要".to_string()));
+  let mut options = Options::empty();
+  options.insert(Options::ENABLE_STRIKETHROUGH);
+  options.insert(Options::ENABLE_TABLES);
+  options.insert(Options::ENABLE_TASKLISTS);
+  let parser = Parser::new_ext(markdown, options);
+  let mut output = String::new();
+  html::push_html(&mut output, parser);
+  format!(
+    r#"<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title} - SiriusX Summary</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {{
+        color-scheme: light;
+        --ink: #2d2a24;
+        --paper: #f7f1e3;
+        --edge: #d8c9aa;
+        --accent: #b0894f;
+      }}
+      * {{
+        box-sizing: border-box;
+      }}
+      body {{
+        margin: 0;
+        min-height: 100vh;
+        padding: 48px 20px;
+        font-family: "Noto Serif SC", "Songti SC", serif;
+        background: radial-gradient(circle at top, rgba(255, 255, 255, 0.8), transparent 55%),
+          linear-gradient(145deg, #fdf9f0, #efe3c8),
+          url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='%23cdbb99' fill-opacity='0.12'%3E%3Cpath d='M8 16c8 10 24 2 30 12 4 6-6 14-1 20 5 6 16 0 22 8 6 8-2 14-8 18-6 4-10 10-7 16'/%3E%3Cpath d='M60 8c6 10 18 6 26 14 6 6 0 12 6 18 6 6 18 0 20 10 2 8-10 10-16 14-6 4-8 12-4 18'/%3E%3Cpath d='M20 80c8 8 18 0 26 10 6 8-2 14 2 20 4 6 14 4 22 10'/%3E%3Cpath d='M86 72c6 8 16 4 20 12 4 8-4 12-8 18'/%3E%3C/g%3E%3Cg fill='%23a48f69' fill-opacity='0.08'%3E%3Ccircle cx='18' cy='32' r='1.5'/%3E%3Ccircle cx='44' cy='54' r='1.2'/%3E%3Ccircle cx='70' cy='26' r='1.4'/%3E%3Ccircle cx='92' cy='58' r='1.1'/%3E%3Ccircle cx='36' cy='92' r='1.3'/%3E%3Ccircle cx='64' cy='88' r='1.1'/%3E%3C/g%3E%3C/svg%3E");
+        color: var(--ink);
+      }}
+      article {{
+        max-width: 880px;
+        margin: 0 auto;
+        background: linear-gradient(180deg, rgba(255, 252, 245, 0.96), rgba(244, 234, 214, 0.95)),
+          url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cg stroke='%23c7b08b' stroke-opacity='0.2' stroke-width='1'%3E%3Cpath d='M8 20c12 14 30 6 42 16 10 8-2 18 8 26 10 8 28 2 38 12 10 10-2 18-10 24' fill='none'/%3E%3Cpath d='M60 10c8 14 24 10 34 20 8 8 0 16 10 24 10 8 26 2 30 14' fill='none'/%3E%3Cpath d='M24 92c10 10 22 2 32 12 8 10-2 18 6 26' fill='none'/%3E%3C/g%3E%3Cg fill='%23bfa37a' fill-opacity='0.12'%3E%3Ccircle cx='28' cy='40' r='1.4'/%3E%3Ccircle cx='78' cy='52' r='1.2'/%3E%3Ccircle cx='112' cy='34' r='1.1'/%3E%3Ccircle cx='44' cy='120' r='1.3'/%3E%3Ccircle cx='96' cy='118' r='1.2'/%3E%3C/g%3E%3C/svg%3E");
+        border: 1px solid var(--edge);
+        box-shadow: 0 28px 50px rgba(80, 60, 30, 0.18);
+        padding: 36px 40px 48px;
+        position: relative;
+      }}
+      article::before {{
+        content: "";
+        position: absolute;
+        inset: 16px;
+        border: 1px dashed rgba(176, 137, 79, 0.35);
+        pointer-events: none;
+      }}
+      header {{
+        border-bottom: 1px solid var(--edge);
+        padding-bottom: 16px;
+        margin-bottom: 24px;
+      }}
+      h1 {{
+        margin: 0 0 8px;
+        font-family: "Ma Shan Zheng", "Noto Serif SC", serif;
+        font-size: 32px;
+        letter-spacing: 2px;
+        color: #402c1f;
+      }}
+      .subtitle {{
+        font-size: 14px;
+        color: #6f5a3d;
+      }}
+      h2 {{
+        margin: 26px 0 10px;
+        font-size: 18px;
+        color: #4b3a25;
+        display: inline-block;
+        padding: 4px 12px;
+        border-left: 3px solid var(--accent);
+        background: rgba(176, 137, 79, 0.08);
+      }}
+      p {{
+        line-height: 1.9;
+        margin: 0 0 12px;
+      }}
+      ul, ol {{
+        margin: 0 0 12px 20px;
+        padding: 0;
+        line-height: 1.9;
+      }}
+      pre {{
+        margin: 12px 0 0;
+        padding: 16px;
+        background: #fbf6ea;
+        border-left: 3px solid var(--accent);
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: "Noto Serif SC", "Songti SC", serif;
+        line-height: 1.8;
+      }}
+      img {{
+        max-width: 100%;
+        border-radius: 12px;
+        border: 1px solid rgba(176, 137, 79, 0.25);
+      }}
+      .stamp {{
+        position: absolute;
+        top: 32px;
+        right: 32px;
+        width: 72px;
+        height: 72px;
+        border: 2px solid var(--accent);
+        color: var(--accent);
+        display: grid;
+        place-items: center;
+        font-family: "Ma Shan Zheng", "Noto Serif SC", serif;
+        transform: rotate(8deg);
+      }}
+    </style>
+  </head>
+  <body>
+    <article>
+      <div class="stamp">{stamp}</div>
+      <header>
+        <h1>{title}</h1>
+        <div class="subtitle">{subtitle}</div>
+      </header>
+      {body}
+    </article>
+  </body>
+</html>"#,
+    title = title,
+    subtitle = subtitle,
+    stamp = stamp,
+    body = output
+  )
+}
+
+fn format_bilingual(cn: &str, en: &str) -> String {
+  let cn = cn.trim();
+  let en = en.trim();
+  if cn.is_empty() && en.is_empty() {
+    return String::new();
+  }
+  if en.is_empty() {
+    return cn.to_string();
+  }
+  if cn.is_empty() {
+    return en.to_string();
+  }
+  format!("{cn} / {en}")
+}
+
+#[derive(Deserialize)]
+struct HtmlLabelResponse {
+  subtitle_cn: String,
+  subtitle_en: String,
+  stamp_cn: String,
+  stamp_en: String
+}
+
+async fn generate_html_labels(
+  api_key: &str,
+  model: Option<&str>,
+  base_url: Option<&str>,
+  title: &str,
+  summary: &str
+) -> Result<(String, String)> {
+  let prompt = format!(
+    "你是资深内容编辑，请基于视频标题与摘要生成一组用于网页的短文本。\n\n标题：{title}\n摘要：{summary}\n\n请输出严格 JSON 格式，字段如下：\n{{\n  \"subtitle_cn\": \"20字以内中文副标题\",\n  \"subtitle_en\": \"12词以内英文副标题\",\n  \"stamp_cn\": \"4字以内中文印章\",\n  \"stamp_en\": \"2-4词英文印章\"\n}}\n\n要求：\n- 与视频内容强相关\n- 文案要精炼、有记忆点\n- 仅输出 JSON，不要添加其它文字\n",
+    title = title,
+    summary = summary
+  );
+  let client = Client::builder().user_agent("SiriusX Summary/0.1").build()?;
+  let response = call_llm(&client, api_key, model, base_url, &prompt)
+    .await
+    .map_err(|err| anyhow!(err))?;
+  let parsed: HtmlLabelResponse = serde_json::from_str(&response)
+    .map_err(|err| anyhow!("解析 HTML 文案失败: {err}"))?;
+  let subtitle = format_bilingual(&parsed.subtitle_cn, &parsed.subtitle_en);
+  let stamp = format_bilingual(&parsed.stamp_cn, &parsed.stamp_en);
+  Ok((subtitle, stamp))
 }
 
 // PocketFlow 状态机：控制字幕、转写、总结等分支
@@ -165,8 +420,9 @@ fn build_summary_flow() -> pocketflow_rs::Flow<WorkflowState> {
 }
 
 // 构建 Flow 上下文：把请求字段写入流程共享数据
-fn build_flow_context(request: &SummarizeRequest) -> Context {
+fn build_flow_context(request: &SummarizeRequest, run_id: &str) -> Result<Context> {
   let mut context = Context::new();
+  let run_dir = resolve_run_dir(run_id)?;
   context.set("url", json!(request.url));
   context.set("api_key", json!(request.api_key));
   context.set("model", json!(request.model));
@@ -175,7 +431,10 @@ fn build_flow_context(request: &SummarizeRequest) -> Context {
   context.set("cookie", json!(request.cookie));
   context.set("stt_language", json!(request.stt_language));
   context.set("refine_transcript", json!(request.refine_transcript.unwrap_or(true)));
-  context
+  context.set("screenshot", json!(request.screenshot.unwrap_or(false)));
+  context.set("run_id", json!(run_id));
+  context.set("run_dir", json!(run_dir.to_string_lossy().to_string()));
+  Ok(context)
 }
 
 // 从 Context 读取必填字符串
@@ -212,6 +471,11 @@ fn context_optional_bool(context: &Context, key: &str) -> bool {
     .unwrap_or(false)
 }
 
+fn context_required_path(context: &Context, key: &str) -> Result<PathBuf> {
+  let value = context_required_string(context, key)?;
+  Ok(PathBuf::from(value))
+}
+
 // 写入字幕信息到 Context
 fn set_transcript_context(
   context: &mut Context,
@@ -230,12 +494,19 @@ async fn refine_transcript_with_llm(
   model: Option<&str>,
   base_url: Option<&str>,
   title: &str,
-  transcript: &str
+  transcript: &str,
+  stt_language: Option<&str>
 ) -> Result<String> {
+  let (language_label, output_requirement) = match stt_language {
+    Some("en") => ("English", "Output must be in English."),
+    _ => ("简体中文", "全部使用简体中文。")
+  };
   let prompt = format!(
-    "你是专业字幕润色助手，请基于视频标题与字幕进行润色，要求：\n1. 保留原意与时间顺序\n2. 修正明显错别字与断句\n3. 保持口语化但更通顺\n4. 不要添加不存在的信息\n\n标题：{title}\n\n字幕：\n{transcript}\n",
+    "你是专业字幕润色助手，请基于视频标题与字幕进行润色，要求：\n1. 保留原意与时间顺序\n2. 修正明显错别字与断句\n3. 保持口语化但更通顺\n4. 不要添加不存在的信息\n5. {output_requirement}\n6. 每行输出一条字幕，行数与输入保持一致\n\n标题：{title}\n\n字幕：\n{transcript}\n\n输出语言：{language_label}",
+    output_requirement = output_requirement,
     title = title,
-    transcript = transcript
+    transcript = transcript,
+    language_label = language_label
   );
   let client = Client::builder().user_agent("SiriusX Summary/0.1").build()?;
   let refined = call_llm(&client, api_key, model, base_url, &prompt)
@@ -406,13 +677,19 @@ impl Node for WhisperTranscribeNode {
     let url = context_required_string(context, "url")?;
     let cookie = context_optional_string(context, "cookie");
     let stt_language = context_optional_string(context, "stt_language");
+    let run_dir = context_required_path(context, "run_dir")?;
     info!(
       "🎙️ WhisperTranscribeNode 请求: url={}, cookie={}, stt_language={}",
       url,
       if cookie.is_some() { "已提供" } else { "未提供" },
       stt_language.as_deref().unwrap_or("未设置")
     );
-    let transcript = transcribe_with_whisper(&url, cookie.as_deref(), stt_language.as_deref())
+    let transcript = transcribe_with_whisper(
+      &url,
+      cookie.as_deref(),
+      stt_language.as_deref(),
+      &run_dir
+    )
       .await
       .map_err(|err| anyhow!(err))?;
 
@@ -469,12 +746,13 @@ impl Node for BuildPromptNode {
     let title = context_required_string(context, "title")?;
     let transcript_text = context_required_string(context, "transcript_text")?;
     let custom_prompt = context_optional_string(context, "prompt");
+    let screenshot = context_optional_bool(context, "screenshot");
     if custom_prompt.is_some() {
       info!("🧾 BuildPromptNode 使用自定义 prompt: title={}", title);
     } else {
       info!("🧾 BuildPromptNode 使用默认 prompt: title={}", title);
     }
-    let prompt = build_prompt(&title, &transcript_text, custom_prompt.as_deref());
+    let prompt = build_prompt(&title, &transcript_text, custom_prompt.as_deref(), screenshot);
 
     Ok(json!({
       "prompt": prompt
@@ -525,18 +803,25 @@ impl Node for CallLlmNode {
 
     if refine_transcript && matches!(transcript_source, TranscriptSource::Whisper) {
       info!("✨ CallLlmNode 开始润色 Whisper 字幕: title={}", title);
+      let stt_language = context_optional_string(context, "stt_language");
+      let segments = context_optional_segments(context, "transcript_segments")
+        .ok_or_else(|| anyhow!("字幕片段缺失"))?;
+      let raw_lines = segments
+        .iter()
+        .map(|segment| segment.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
       let refined = refine_transcript_with_llm(
         &api_key,
         model.as_deref(),
         base_url.as_deref(),
         &title,
-        &transcript_text
+        &raw_lines,
+        stt_language.as_deref()
       )
       .await
       .map_err(|err| anyhow!(err))?;
       if !refined.trim().is_empty() {
-        let segments = context_optional_segments(context, "transcript_segments")
-          .ok_or_else(|| anyhow!("字幕片段缺失"))?;
         refined_segments = Some(apply_refined_transcript(segments, &refined));
         refined_text = Some(refined);
         refined_source = TranscriptSource::WhisperRefined;
@@ -555,12 +840,38 @@ impl Node for CallLlmNode {
       .await
       .map_err(|err| anyhow!(err))?;
 
+    let mut html_subtitle = None;
+    let mut html_stamp = None;
+    match generate_html_labels(
+      &api_key,
+      model.as_deref(),
+      base_url.as_deref(),
+      &title,
+      &summary
+    )
+    .await
+    {
+      Ok((subtitle, stamp)) => {
+        if !subtitle.trim().is_empty() {
+          html_subtitle = Some(subtitle);
+        }
+        if !stamp.trim().is_empty() {
+          html_stamp = Some(stamp);
+        }
+      }
+      Err(err) => {
+        warn!("⚠️ HTML 文案生成失败: {}", err);
+      }
+    }
+
     info!("✅ CallLlmNode 生成摘要完成: length={}", summary.len());
     Ok(json!({
       "summary": summary,
       "refined_transcript_text": refined_text,
       "refined_transcript_segments": refined_segments,
-      "refined_transcript_source": refined_source
+      "refined_transcript_source": refined_source,
+      "html_subtitle": html_subtitle,
+      "html_stamp": html_stamp
     }))
   }
 
@@ -586,6 +897,14 @@ impl Node for CallLlmNode {
         let refined_source = value
           .get("refined_transcript_source")
           .and_then(|item| serde_json::from_value::<TranscriptSource>(item.clone()).ok());
+        let html_subtitle = value
+          .get("html_subtitle")
+          .and_then(|item| item.as_str())
+          .map(|text| text.to_string());
+        let html_stamp = value
+          .get("html_stamp")
+          .and_then(|item| item.as_str())
+          .map(|text| text.to_string());
         context.set("summary", json!(summary));
         if let Some(refined_text) = refined_text {
           context.set("transcript_text", json!(refined_text));
@@ -595,6 +914,12 @@ impl Node for CallLlmNode {
         }
         if let Some(refined_source) = refined_source {
           context.set("transcript_source", json!(refined_source));
+        }
+        if let Some(html_subtitle) = html_subtitle {
+          context.set("html_subtitle", json!(html_subtitle));
+        }
+        if let Some(html_stamp) = html_stamp {
+          context.set("html_stamp", json!(html_stamp));
         }
         Ok(ProcessResult::new(WorkflowState::SummaryReady, "summary_ready".to_string()))
       }
@@ -612,14 +937,20 @@ impl Node for AssembleResponseNode {
 
   // 汇总摘要、字幕并生成 Markdown/HTML
   async fn execute(&self, context: &Context) -> Result<serde_json::Value> {
+    let run_id = context_required_string(context, "run_id")?;
     let title = context_required_string(context, "title")?;
     let summary = context_required_string(context, "summary")?;
     let url = context_required_string(context, "url")?;
     let transcript_text = context_required_string(context, "transcript_text")?;
+    let cookie = context_optional_string(context, "cookie");
+    let run_dir = context_required_path(context, "run_dir")?;
     let transcript_segments = context_optional_segments(context, "transcript_segments")
       .ok_or_else(|| anyhow!("字幕片段缺失"))?;
     let transcript_source = context_optional_source(context, "transcript_source")
       .ok_or_else(|| anyhow!("字幕来源缺失"))?;
+    let screenshot = context_optional_bool(context, "screenshot");
+    let html_subtitle = context_optional_string(context, "html_subtitle");
+    let html_stamp = context_optional_string(context, "html_stamp");
     info!(
       "🧩 AssembleResponseNode 组装响应: title={}, segments={}",
       title,
@@ -628,7 +959,7 @@ impl Node for AssembleResponseNode {
     let timestamp_value = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
     let formatted_transcript = format_transcript_with_timestamps(&transcript_segments);
-    let markdown = format!(
+    let mut markdown = format!(
       "# {title}\n\n## 摘要\n\n{summary}\n\n## 视频信息\n\n- 视频地址: {url}\n- 生成时间: {time}\n\n## 字幕来源\n\n{source}\n\n## 字幕内容\n\n{transcript}",
       title = title,
       summary = summary,
@@ -637,21 +968,43 @@ impl Node for AssembleResponseNode {
       source = format_transcript_source(transcript_source),
       transcript = formatted_transcript
     );
-    let html = format!(
-      "<article class=\"summary\">\n  <h1>{title}</h1>\n  <section>\n    <h2>摘要</h2>\n    <p>{summary}</p>\n  </section>\n  <section class=\"meta\">\n    <h2>视频信息</h2>\n    <ul>\n      <li><strong>视频地址</strong> {url}</li>\n      <li><strong>生成时间</strong> {time}</li>\n    </ul>\n  </section>\n  <section>\n    <h2>字幕来源</h2>\n    <p>{source}</p>\n  </section>\n  <section>\n    <h2>字幕内容</h2>\n    <pre>{transcript}</pre>\n  </section>\n</article>",
-      title = title,
-      summary = summary,
-      url = url,
-      time = timestamp_value,
-      source = format_transcript_source(transcript_source),
-      transcript = formatted_transcript
+    if screenshot {
+      let markers = extract_screenshot_markers(&markdown);
+      if !markers.is_empty() {
+        let video_dir = run_dir.join("resources");
+        let video_path = download_video_with_ytdlp(&url, cookie.as_deref(), &video_dir)
+          .map_err(|err| anyhow!(err))?;
+        let screenshot_dir = run_dir.join("screenshots");
+        let image_base = format!("/output/{run_id}/screenshots", run_id = run_id);
+        for (index, (marker, timestamp)) in markers.iter().enumerate() {
+          let image_path = generate_screenshot(&video_path, &screenshot_dir, *timestamp, index)
+            .map_err(|err| anyhow!(err))?;
+          let filename = image_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| anyhow!("截图文件名解析失败"))?;
+          let image_url = format!("{}/{}", image_base.trim_end_matches('/'), filename);
+          markdown = markdown.replacen(marker, &format!("![]({})", image_url), 1);
+        }
+      }
+    }
+    let stripped_markdown = strip_markdown_title(&markdown);
+    let html = render_markdown_html(
+      &title,
+      &stripped_markdown,
+      html_subtitle.as_deref(),
+      html_stamp.as_deref()
     );
+    write_output_files(&run_dir, &run_id, &markdown, &html, &transcript_text)?;
 
     let response = SummarizeResponse {
+      run_id,
       title,
       summary,
       markdown,
       html,
+      html_subtitle,
+      html_stamp,
       transcript: Some(transcript_text),
       transcript_segments: Some(transcript_segments),
       transcript_source: Some(transcript_source)

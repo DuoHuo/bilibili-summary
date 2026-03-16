@@ -2,6 +2,7 @@ use axum::{routing::post, Router};
 use reqwest::Client;
 use std::{net::SocketAddr, sync::Arc};
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::services::ServeDir;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
@@ -28,6 +29,7 @@ async fn main() {
   };
 
   // 注册路由并开启 CORS，便于前端跨域访问
+  let output_dir = std::env::var("OUTPUT_DIR").unwrap_or_else(|_| "output".to_string());
   let app = Router::new()
     .route("/api/summarize", post(summarize))
     .layer(
@@ -36,6 +38,7 @@ async fn main() {
         .allow_headers(Any)
         .allow_origin(Any)
     )
+    .nest_service("/output", ServeDir::new(output_dir))
     .with_state(Arc::new(state));
 
   // 监听端口并启动服务
