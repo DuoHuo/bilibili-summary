@@ -1,7 +1,7 @@
 import type { PromptMode } from "./prompts"
 import type { UserConfig } from "./types"
 
-const CONFIG_DB_NAME = "video-summary"
+const CONFIG_DB_NAME = "siriusx-summary"
 const CONFIG_STORE = "user-config"
 const CONFIG_KEY = "active"
 

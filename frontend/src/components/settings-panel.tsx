@@ -1,12 +1,11 @@
 import { useEffect, type ReactNode } from "react"
+
 import {
   Camera,
   Cookie,
   Globe,
   KeyRound,
-  Languages,
-  Sparkles,
-  SquarePen
+  Languages
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -21,10 +20,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  resolvePrompt,
-  type PromptMode
-} from "@/lib/prompts"
 import type { UserConfig } from "@/lib/types"
 
 interface SettingsPanelProps {
@@ -33,26 +28,6 @@ interface SettingsPanelProps {
   config: UserConfig
   onChange: (patch: Partial<UserConfig>) => void
 }
-
-const PROMPT_MODE_OPTIONS: ReadonlyArray<{
-  value: PromptMode
-  label: string
-  hint: string
-  icon: typeof Sparkles
-}> = [
-  {
-    value: "summary",
-    label: "总结模式",
-    hint: "结构化要点 + 完整总结段落",
-    icon: Sparkles
-  },
-  {
-    value: "custom",
-    label: "自定义",
-    hint: "下方自由编辑模板",
-    icon: SquarePen
-  }
-]
 
 export function SettingsPanel({
   open,
@@ -75,7 +50,7 @@ export function SettingsPanel({
         <DialogHeader>
           <DialogTitle>模型与抓取设置</DialogTitle>
           <DialogDescription>
-            配置大模型端点、鉴权与提示词模板。设置自动保存到本地。
+            配置大模型端点与鉴权。设置自动保存到本地。
           </DialogDescription>
         </DialogHeader>
 
@@ -185,93 +160,6 @@ export function SettingsPanel({
             </ToggleRow>
           </Section>
 
-          {/* ── 提示词模板 ── */}
-          <Section title="提示词模板" icon={SquarePen}>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              {PROMPT_MODE_OPTIONS.map((option) => {
-                const selected = config.promptMode === option.value
-                const Icon = option.icon
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => onChange({ promptMode: option.value })}
-                    className={
-                      "group flex flex-col items-start gap-2 rounded-lg border p-4 text-left transition-all " +
-                      (selected
-                        ? "border-primary bg-surface-card shadow-sm"
-                        : "border-hairline bg-canvas hover:border-muted-soft hover:bg-surface-soft")
-                    }
-                    aria-pressed={selected}
-                  >
-                    <Icon
-                      className={
-                        "size-4 transition-colors " +
-                        (selected ? "text-primary" : "text-muted")
-                      }
-                    />
-                    <span className="text-sm font-medium text-ink">
-                      {option.label}
-                    </span>
-                    <span className="text-[11px] leading-snug text-muted">
-                      {option.hint}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-
-            {config.promptMode === "custom" ? (
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="prompt">自定义提示词</Label>
-                <Textarea
-                  id="prompt"
-                  rows={10}
-                  spellCheck={false}
-                  className="font-mono text-[13px] leading-relaxed"
-                  value={config.prompt}
-                  onChange={(event) =>
-                    onChange({ prompt: event.target.value })
-                  }
-                />
-                <p className="text-xs text-muted">
-                  支持{" "}
-                  <code className="rounded bg-surface-card px-1 py-0.5 text-ink">
-                    {"{{title}}"}
-                  </code>{" "}
-                  与{" "}
-                  <code className="rounded bg-surface-card px-1 py-0.5 text-ink">
-                    {"{{transcript}}"}
-                  </code>{" "}
-                  模板变量。
-                </p>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-1.5">
-                <Label className="flex items-center gap-1.5 text-muted">
-                  <span>
-                    {config.promptMode === "summary"
-                      ? "总结模式"
-                      : config.promptMode === "fulltext"
-                        ? "全文模式"
-                        : "校对模式"}{" "}
-                    · 内置模板（只读）
-                  </span>
-                </Label>
-                <Textarea
-                  rows={10}
-                  spellCheck={false}
-                  readOnly
-                  className="bg-surface-soft font-mono text-[13px] leading-relaxed text-muted"
-                  value={resolvePrompt(config.promptMode, config.prompt)}
-                />
-                <p className="text-xs text-muted">
-                  切到「自定义」可基于此模板修改。
-                </p>
-              </div>
-            )}
-          </Section>
-
           <div className="flex justify-end pt-1">
             <Button type="button" onClick={() => onOpenChange(false)}>
               完成
@@ -291,7 +179,7 @@ function Section({
   children
 }: {
   title: string
-  icon: typeof Sparkles
+  icon: typeof KeyRound
   children: ReactNode
 }) {
   return (
@@ -314,7 +202,7 @@ function ToggleRow({
 }: {
   label: string
   description: string
-  icon: typeof Sparkles
+  icon: typeof KeyRound
   children: ReactNode
 }) {
   return (
