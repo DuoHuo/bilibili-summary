@@ -42,7 +42,6 @@ pub struct SummarizeRequest {
   pub prompt: Option<String>,
   pub cookie: Option<String>,
   pub stt_language: Option<String>,
-  pub refine_transcript: Option<bool>,
   pub screenshot: Option<bool>,
   pub mode: Option<String>
 }
@@ -431,7 +430,6 @@ fn build_flow_context(request: &SummarizeRequest, run_id: &str) -> Result<Contex
   context.set("prompt", json!(request.prompt));
   context.set("cookie", json!(request.cookie));
   context.set("stt_language", json!(request.stt_language));
-  context.set("refine_transcript", json!(request.refine_transcript.unwrap_or(true)));
   context.set("screenshot", json!(request.screenshot.unwrap_or(false)));
   // 模式：summary | fulltext | timestamp | custom，缺省 summary
   let mode = request.mode.as_deref()
@@ -492,61 +490,6 @@ fn set_transcript_context(
   context.set("transcript_text", json!(transcript_text));
   context.set("transcript_segments", json!(transcript_segments));
   context.set("transcript_source", json!(transcript_source));
-}
-
-// 调用大模型润色 Whisper 字幕
-async fn refine_transcript_with_llm(
-  api_key: &str,
-  model: Option<&str>,
-  base_url: Option<&str>,
-  title: &str,
-  transcript: &str,
-  stt_language: Option<&str>
-) -> Result<String> {
-  let (language_label, output_requirement) = match stt_language {
-    Some("en") => ("English", "Output must be in English."),
-    _ => ("简体中文", "全部使用简体中文。")
-  };
-  let prompt = format!(
-    "你是专业字幕润色助手，请基于视频标题与字幕进行润色，要求：\n1. 保留原意与时间顺序\n2. 修正明显错别字与断句\n3. 保持口语化但更通顺\n4. 不要添加不存在的信息\n5. {output_requirement}\n6. 每行输出一条字幕，行数与输入保持一致\n\n标题：{title}\n\n字幕：\n{transcript}\n\n输出语言：{language_label}",
-    output_requirement = output_requirement,
-    title = title,
-    transcript = transcript,
-    language_label = language_label
-  );
-  let client = Client::builder().user_agent("SiriusX Summary/0.1").build()?;
-  let refined = call_llm(&client, api_key, model, base_url, &prompt)
-    .await
-    .map_err(|err| anyhow!(err))?;
-  Ok(refined)
-}
-
-// 将润色后的文本回填到片段文本中
-fn apply_refined_transcript(
-  original_segments: Vec<TranscriptSegment>,
-  refined_text: &str
-) -> Vec<TranscriptSegment> {
-  let refined_lines: Vec<&str> = refined_text
-    .lines()
-    .map(|line| line.trim())
-    .filter(|line| !line.is_empty())
-    .collect();
-  if refined_lines.is_empty() {
-    return original_segments;
-  }
-
-  let mut refined_iter = refined_lines.into_iter();
-  original_segments
-    .into_iter()
-    .map(|segment| {
-      let replacement = refined_iter.next().unwrap_or(segment.text.as_str());
-      TranscriptSegment {
-        start: segment.start,
-        end: segment.end,
-        text: replacement.to_string()
-      }
-    })
-    .collect()
 }
 
 // 节点：平台识别
@@ -800,40 +743,8 @@ impl Node for CallLlmNode {
     let prompt = context_required_string(context, "prompt_text")?;
     let title = context_required_string(context, "title")?;
     let transcript_text = context_required_string(context, "transcript_text")?;
-    let transcript_source = context_optional_source(context, "transcript_source")
+    let _transcript_source = context_optional_source(context, "transcript_source")
       .ok_or_else(|| anyhow!("字幕来源缺失"))?;
-    let refine_transcript = context_optional_bool(context, "refine_transcript");
-    let mut refined_text = None;
-    let mut refined_segments = None;
-    let mut refined_source = transcript_source;
-
-    if refine_transcript && matches!(transcript_source, TranscriptSource::Whisper) {
-      info!("✨ CallLlmNode 开始润色 Whisper 字幕: title={}", title);
-      let stt_language = context_optional_string(context, "stt_language");
-      let segments = context_optional_segments(context, "transcript_segments")
-        .ok_or_else(|| anyhow!("字幕片段缺失"))?;
-      let raw_lines = segments
-        .iter()
-        .map(|segment| segment.text.as_str())
-        .collect::<Vec<_>>()
-        .join("\n");
-      let refined = refine_transcript_with_llm(
-        &api_key,
-        model.as_deref(),
-        base_url.as_deref(),
-        &title,
-        &raw_lines,
-        stt_language.as_deref()
-      )
-      .await
-      .map_err(|err| anyhow!(err))?;
-      if !refined.trim().is_empty() {
-        refined_segments = Some(apply_refined_transcript(segments, &refined));
-        refined_text = Some(refined);
-        refined_source = TranscriptSource::WhisperRefined;
-        info!("✅ CallLlmNode Whisper 字幕润色完成");
-      }
-    }
 
     info!(
       "🤖 CallLlmNode 请求: model={}, base_url={}, prompt_len={}",
@@ -873,9 +784,6 @@ impl Node for CallLlmNode {
     info!("✅ CallLlmNode 生成摘要完成: length={}", summary.len());
     Ok(json!({
       "summary": summary,
-      "refined_transcript_text": refined_text,
-      "refined_transcript_segments": refined_segments,
-      "refined_transcript_source": refined_source,
       "html_subtitle": html_subtitle,
       "html_stamp": html_stamp
     }))
@@ -893,16 +801,6 @@ impl Node for CallLlmNode {
           .get("summary")
           .and_then(|item| item.as_str())
           .ok_or_else(|| anyhow!("模型总结失败"))?;
-        let refined_text = value
-          .get("refined_transcript_text")
-          .and_then(|item| item.as_str())
-          .map(|text| text.to_string());
-        let refined_segments = value
-          .get("refined_transcript_segments")
-          .and_then(|item| serde_json::from_value::<Vec<TranscriptSegment>>(item.clone()).ok());
-        let refined_source = value
-          .get("refined_transcript_source")
-          .and_then(|item| serde_json::from_value::<TranscriptSource>(item.clone()).ok());
         let html_subtitle = value
           .get("html_subtitle")
           .and_then(|item| item.as_str())
@@ -912,15 +810,6 @@ impl Node for CallLlmNode {
           .and_then(|item| item.as_str())
           .map(|text| text.to_string());
         context.set("summary", json!(summary));
-        if let Some(refined_text) = refined_text {
-          context.set("transcript_text", json!(refined_text));
-        }
-        if let Some(refined_segments) = refined_segments {
-          context.set("transcript_segments", json!(refined_segments));
-        }
-        if let Some(refined_source) = refined_source {
-          context.set("transcript_source", json!(refined_source));
-        }
         if let Some(html_subtitle) = html_subtitle {
           context.set("html_subtitle", json!(html_subtitle));
         }

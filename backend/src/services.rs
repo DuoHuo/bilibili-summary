@@ -34,7 +34,6 @@ pub struct TranscriptSegment {
 pub enum TranscriptSource {
   Subtitle,
   Whisper,
-  WhisperRefined
 }
 
 // 统一字幕载体
@@ -938,7 +937,6 @@ pub fn format_transcript_source(source: TranscriptSource) -> &'static str {
   match source {
     TranscriptSource::Subtitle => "平台字幕",
     TranscriptSource::Whisper => "本地 Whisper 转写",
-    TranscriptSource::WhisperRefined => "本地 Whisper 转写（模型润色）"
   }
 }
 #[cfg(test)]
