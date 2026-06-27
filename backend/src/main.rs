@@ -23,7 +23,7 @@ async fn main() {
   let state = AppState {
     // 统一设置 User-Agent，便于平台请求识别
     http: Client::builder()
-      .user_agent("SiriusX Summary/0.1")
+      .user_agent("Video Summary/0.1")
       .build()
       .expect("http client")
   };

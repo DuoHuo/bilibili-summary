@@ -167,6 +167,36 @@ fn strip_markdown_title(markdown: &str) -> String {
   result.join("\n").trim().to_string()
 }
 
+fn build_output_markdown(
+  mode: &str,
+  title: &str,
+  summary: &str,
+  url: &str,
+  time: &str,
+  transcript_source: TranscriptSource,
+  transcript_segments: &[TranscriptSegment]
+) -> String {
+  let summary = strip_markdown_title(summary);
+  let mut markdown = format!(
+    "# {title}\n\n## 摘要\n\n{summary}\n\n## 视频信息\n\n- 视频地址: {url}\n- 生成时间: {time}",
+    title = title,
+    summary = summary,
+    url = url,
+    time = time
+  );
+
+  if mode == "timestamp" {
+    let formatted_transcript = format_transcript_with_timestamps(transcript_segments);
+    markdown.push_str(&format!(
+      "\n\n## 字幕来源\n\n{source}\n\n## 字幕内容\n\n{transcript}",
+      source = format_transcript_source(transcript_source),
+      transcript = formatted_transcript
+    ));
+  }
+
+  markdown
+}
+
 fn render_markdown_html(
   title: &str,
   markdown: &str,
@@ -177,7 +207,7 @@ fn render_markdown_html(
     .map(|value| value.to_string())
     .unwrap_or_else(|| {
       std::env::var("SUMMARY_HTML_SUBTITLE")
-        .unwrap_or_else(|_| "东方简约信纸 · SiriusX Summary".to_string())
+        .unwrap_or_else(|_| "东方简约信纸 · Video Summary".to_string())
     });
   let stamp = stamp
     .map(|value| value.to_string())
@@ -195,7 +225,7 @@ fn render_markdown_html(
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{title} - SiriusX Summary</title>
+    <title>{title} - Video Summary</title>
     <link
       href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;600&display=swap"
       rel="stylesheet"
@@ -355,7 +385,7 @@ async fn generate_html_labels(
     title = title,
     summary = summary
   );
-  let client = Client::builder().user_agent("SiriusX Summary/0.1").build()?;
+  let client = Client::builder().user_agent("Video Summary/0.1").build()?;
   let response = call_llm(&client, api_key, model, base_url, &prompt)
     .await
     .map_err(|err| anyhow!(err))?;
@@ -547,7 +577,7 @@ impl Node for FetchSubtitleNode {
     let platform = context_required_string(context, "platform")?;
     let url = context_required_string(context, "url")?;
     info!("📥 FetchSubtitleNode 请求: platform={}, url={}", platform, url);
-    let client = Client::builder().user_agent("SiriusX Summary/0.1").build()?;
+    let client = Client::builder().user_agent("Video Summary/0.1").build()?;
     let (title, transcript) = match platform.as_str() {
       "bilibili" => summarize_bilibili(&client, &url).await.map_err(|err| anyhow!(err))?,
       "youtube" => summarize_youtube(&client, &url).await.map_err(|err| anyhow!(err))?,
@@ -764,7 +794,7 @@ impl Node for CallLlmNode {
       base_url.as_deref().unwrap_or("默认"),
       prompt.len()
     );
-    let client = Client::builder().user_agent("SiriusX Summary/0.1").build()?;
+    let client = Client::builder().user_agent("Video Summary/0.1").build()?;
     let summary = call_llm(&client, &api_key, model.as_deref(), base_url.as_deref(), &prompt)
       .await
       .map_err(|err| anyhow!(err))?;
@@ -920,6 +950,7 @@ impl Node for AssembleResponseNode {
     let screenshot = context_optional_bool(context, "screenshot");
     let html_subtitle = context_optional_string(context, "html_subtitle");
     let html_stamp = context_optional_string(context, "html_stamp");
+    let mode = context_optional_string(context, "mode").unwrap_or_else(|| "summary".to_string());
     info!(
       "🧩 AssembleResponseNode 组装响应: title={}, segments={}",
       title,
@@ -927,15 +958,14 @@ impl Node for AssembleResponseNode {
     );
     let timestamp_value = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
-    let formatted_transcript = format_transcript_with_timestamps(&transcript_segments);
-    let mut markdown = format!(
-      "# {title}\n\n## 摘要\n\n{summary}\n\n## 视频信息\n\n- 视频地址: {url}\n- 生成时间: {time}\n\n## 字幕来源\n\n{source}\n\n## 字幕内容\n\n{transcript}",
-      title = title,
-      summary = summary,
-      url = url,
-      time = timestamp_value,
-      source = format_transcript_source(transcript_source),
-      transcript = formatted_transcript
+    let mut markdown = build_output_markdown(
+      &mode,
+      &title,
+      &summary,
+      &url,
+      &timestamp_value,
+      transcript_source,
+      &transcript_segments
     );
     if screenshot {
       let markers = extract_screenshot_markers(&markdown);
@@ -995,5 +1025,55 @@ impl Node for AssembleResponseNode {
       }
       Err(err) => Err(anyhow!(err.to_string()))
     }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::services::{TranscriptSegment, TranscriptSource};
+
+  fn sample_segments() -> Vec<TranscriptSegment> {
+    vec![TranscriptSegment {
+      start: 0.0,
+      end: 4.0,
+      text: "Hello world".to_string()
+    }]
+  }
+
+  #[test]
+  fn fulltext_output_omits_transcript_sections() {
+    let markdown = build_output_markdown(
+      "fulltext",
+      "Video Title",
+      "# Article Title\n\n## 引言\n\nA smooth article",
+      "https://example.com/video",
+      "2026-06-27 20:16:07",
+      TranscriptSource::Whisper,
+      &sample_segments()
+    );
+
+    assert!(markdown.starts_with("# Video Title"));
+    assert!(markdown.contains("## 摘要"));
+    assert!(markdown.contains("## 引言"));
+    assert!(!markdown.contains("# Article Title"));
+    assert!(!markdown.contains("## 字幕来源"));
+    assert!(!markdown.contains("## 字幕内容"));
+  }
+
+  #[test]
+  fn timestamp_output_keeps_transcript_sections() {
+    let markdown = build_output_markdown(
+      "timestamp",
+      "Sample Title",
+      "A smooth article",
+      "https://example.com/video",
+      "2026-06-27 20:16:07",
+      TranscriptSource::Whisper,
+      &sample_segments()
+    );
+
+    assert!(markdown.contains("## 字幕来源"));
+    assert!(markdown.contains("## 字幕内容"));
   }
 }

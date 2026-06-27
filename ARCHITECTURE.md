@@ -1,8 +1,8 @@
-# SiriusX Summary Architecture
+# Video Summary Architecture
 
 ## 总览
 
-SiriusX Summary 是一个前后端可部署的摘要应用：前端采用 React + Vite，后端采用 Rust + Axum。用户在前端输入 B 站或 YouTube 链接，后端完成字幕获取/转写、调用大模型生成摘要与 Markdown，并将结果返回前端展示。
+Video Summary 是一个前后端可部署的摘要应用：前端采用 React + Vite，后端采用 Rust + Axum。用户在前端输入 B 站或 YouTube 链接，后端完成字幕获取/转写、调用大模型生成摘要与 Markdown，并将结果返回前端展示。
 
 ## 核心流程
 

@@ -1,5 +1,5 @@
 [package]
-name = "siriusx-summary-backend"
+name = "video-summary-backend"
 version = "0.1.0"
 edition = "2024"
 

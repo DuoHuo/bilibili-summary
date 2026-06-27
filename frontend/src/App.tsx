@@ -10,6 +10,28 @@ import { loadConfig, saveConfig } from "@/lib/config"
 import { LEGACY_PROMPT, resolvePrompt } from "@/lib/prompts"
 import type { SummarizeResult, UserConfig } from "@/lib/types"
 
+function stripMarkdownTitle(markdown: string) {
+  const lines = markdown.replace(/\r\n/g, "\n").split("\n")
+  const output: string[] = []
+  let skippedTitle = false
+
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index]
+    if (!skippedTitle && line.trimStart().startsWith("# ")) {
+      skippedTitle = true
+      if (index + 1 < lines.length && lines[index + 1].trim()) {
+        output.push(lines[index + 1])
+      } else {
+        index++
+      }
+      continue
+    }
+    output.push(line)
+  }
+
+  return output.join("\n").trim()
+}
+
 function normalizeTranscriptSection(markdown: string) {
   const timestampPattern = /\[\d{2}:\d{2}(?:-\d{2}:\d{2})?\]/g
   const formatListBlock = (items: string[]) => `\n${items.join("\n")}\n`
@@ -154,7 +176,10 @@ function App() {
   }, [])
 
   const normalizedMarkdown = useMemo(
-    () => (result ? normalizeTranscriptSection(result.markdown) : ""),
+    () =>
+      result
+        ? normalizeTranscriptSection(stripMarkdownTitle(result.markdown))
+        : "",
     [result]
   )
 
