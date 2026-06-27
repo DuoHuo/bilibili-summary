@@ -757,8 +757,6 @@ impl Node for CallLlmNode {
     let prompt = context_required_string(context, "prompt_text")?;
     let title = context_required_string(context, "title")?;
     let transcript_text = context_required_string(context, "transcript_text")?;
-    let _transcript_source = context_optional_source(context, "transcript_source")
-      .ok_or_else(|| anyhow!("字幕来源缺失"))?;
 
     info!(
       "🤖 CallLlmNode 请求: model={}, base_url={}, prompt_len={}",

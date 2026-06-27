@@ -180,7 +180,6 @@ function App() {
       prompt: resolvePrompt(config.promptMode, config.prompt) || null,
       cookie: config.cookie.trim() || null,
       stt_language: config.sttLanguage,
-      refine_transcript: true,
       screenshot: config.screenshot,
       mode: config.promptMode
     }

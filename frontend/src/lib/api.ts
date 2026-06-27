@@ -9,7 +9,6 @@ export interface SummarizePayload {
   prompt: string | null
   cookie: string | null
   stt_language: "zh-cn" | "en"
-  refine_transcript: boolean
   screenshot: boolean
   mode: PromptMode
 }
