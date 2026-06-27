@@ -43,7 +43,8 @@ pub struct SummarizeRequest {
   pub cookie: Option<String>,
   pub stt_language: Option<String>,
   pub refine_transcript: Option<bool>,
-  pub screenshot: Option<bool>
+  pub screenshot: Option<bool>,
+  pub mode: Option<String>
 }
 
 // 响应体：结构化摘要 + Markdown/HTML
@@ -432,6 +433,11 @@ fn build_flow_context(request: &SummarizeRequest, run_id: &str) -> Result<Contex
   context.set("stt_language", json!(request.stt_language));
   context.set("refine_transcript", json!(request.refine_transcript.unwrap_or(true)));
   context.set("screenshot", json!(request.screenshot.unwrap_or(false)));
+  // 模式：summary | fulltext | timestamp | custom，缺省 summary
+  let mode = request.mode.as_deref()
+    .filter(|s| matches!(*s, "summary" | "fulltext" | "timestamp" | "custom"))
+    .unwrap_or("summary");
+  context.set("mode", json!(mode));
   context.set("run_id", json!(run_id));
   context.set("run_dir", json!(run_dir.to_string_lossy().to_string()));
   Ok(context)
