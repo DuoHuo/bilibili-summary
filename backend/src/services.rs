@@ -908,9 +908,9 @@ fn resolve_endpoint(base_url: Option<&str>) -> Result<(String, &'static str), St
 
 /// Timestamp 模式：贪心合并相邻 segment 直到累计时长达到阈值。
 /// 见 `docs/superpowers/specs/2026-06-27-three-modes-design.md` §4.3 Step 2。
-const TIMESTAMP_MERGE_THRESHOLD_SECS: f64 = 15.0;
+pub(crate) const TIMESTAMP_MERGE_THRESHOLD_SECS: f64 = 15.0;
 
-fn merge_transcript_segments(
+pub(crate) fn merge_transcript_segments(
   segments: Vec<TranscriptSegment>,
   target_duration_secs: f64
 ) -> Vec<TranscriptSegment> {

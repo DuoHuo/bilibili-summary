@@ -17,12 +17,14 @@ use crate::services::{
   download_video_with_ytdlp,
   format_transcript_source,
   generate_screenshot,
+  merge_transcript_segments,
   summarize_bilibili,
   summarize_youtube,
   transcribe_with_whisper,
   Platform,
   TranscriptSegment,
-  TranscriptSource
+  TranscriptSource,
+  TIMESTAMP_MERGE_THRESHOLD_SECS
 };
 use crate::utils::{extract_screenshot_markers, format_transcript_with_timestamps};
 
@@ -693,9 +695,21 @@ impl Node for BuildPromptNode {
   // 结合标题与字幕生成模型提示词
   async fn execute(&self, context: &Context) -> Result<serde_json::Value> {
     let title = context_required_string(context, "title")?;
-    let transcript_text = context_required_string(context, "transcript_text")?;
+    let segments = context_optional_segments(context, "transcript_segments")
+      .ok_or_else(|| anyhow!("缺少字段: transcript_segments"))?;
     let custom_prompt = context_optional_string(context, "prompt");
     let screenshot = context_optional_bool(context, "screenshot");
+    let mode = context_optional_string(context, "mode").unwrap_or_else(|| "summary".to_string());
+    // timestamp 模式按段一行送入 LLM 做 1:1 修正；其余模式保留时间戳前缀
+    let transcript_text = if mode == "timestamp" {
+      segments
+        .iter()
+        .map(|s| s.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n")
+    } else {
+      format_transcript_with_timestamps(&segments)
+    };
     if custom_prompt.is_some() {
       info!("🧾 BuildPromptNode 使用自定义 prompt: title={}", title);
     } else {
@@ -756,6 +770,37 @@ impl Node for CallLlmNode {
     let summary = call_llm(&client, &api_key, model.as_deref(), base_url.as_deref(), &prompt)
       .await
       .map_err(|err| anyhow!(err))?;
+    let mode = context_optional_string(context, "mode").unwrap_or_else(|| "summary".to_string());
+    let mut final_segments: Option<Vec<TranscriptSegment>> = None;
+    if mode == "timestamp" {
+      // timestamp 模式：LLM 已按行 1:1 修正文本，与原 segment 时间戳对齐
+      let corrected_lines: Vec<&str> = summary
+        .lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .collect();
+      let original_segments = context_optional_segments(context, "transcript_segments")
+        .ok_or_else(|| anyhow!("timestamp 模式需要 transcript_segments"))?;
+      let corrected_segments: Vec<TranscriptSegment> = original_segments
+        .iter()
+        .enumerate()
+        .map(|(i, seg)| TranscriptSegment {
+          start: seg.start,
+          end: seg.end,
+          text: corrected_lines
+            .get(i)
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| seg.text.clone())
+        })
+        .collect();
+      let merged = merge_transcript_segments(corrected_segments, TIMESTAMP_MERGE_THRESHOLD_SECS);
+      info!(
+        "⏱️ timestamp 模式合并完成: {} 段 → {} 段",
+        original_segments.len(),
+        merged.len()
+      );
+      final_segments = Some(merged);
+    }
 
     let mut html_subtitle = None;
     let mut html_stamp = None;
@@ -781,9 +826,34 @@ impl Node for CallLlmNode {
       }
     }
 
-    info!("✅ CallLlmNode 生成摘要完成: length={}", summary.len());
+    let summary_text = if mode == "timestamp" {
+      // 展示给用户的 summary 改写为 [mm:ss-mm:ss] 文本 块
+      final_segments
+        .as_ref()
+        .map(|segs| {
+          segs
+            .iter()
+            .map(|s| {
+              format!(
+                "[{:02}:{:02}-{:02}:{:02}] {}",
+                (s.start as u64) / 60,
+                (s.start as u64) % 60,
+                (s.end as u64) / 60,
+                (s.end as u64) % 60,
+                s.text
+              )
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n")
+        })
+        .unwrap_or_else(|| summary.clone())
+    } else {
+      summary
+    };
+    info!("✅ CallLlmNode 生成摘要完成: length={}", summary_text.len());
     Ok(json!({
-      "summary": summary,
+      "summary": summary_text,
+      "transcript_segments_merged": final_segments,
       "html_subtitle": html_subtitle,
       "html_stamp": html_stamp
     }))
@@ -816,6 +886,11 @@ impl Node for CallLlmNode {
         if let Some(html_stamp) = html_stamp {
           context.set("html_stamp", json!(html_stamp));
         }
+        if let Some(merged) = value.get("transcript_segments_merged") {
+          if !merged.is_null() {
+            context.set("transcript_segments_merged", merged.clone());
+          }
+        }
         Ok(ProcessResult::new(WorkflowState::SummaryReady, "summary_ready".to_string()))
       }
       Err(err) => Err(anyhow!(err.to_string()))
@@ -839,7 +914,8 @@ impl Node for AssembleResponseNode {
     let transcript_text = context_required_string(context, "transcript_text")?;
     let cookie = context_optional_string(context, "cookie");
     let run_dir = context_required_path(context, "run_dir")?;
-    let transcript_segments = context_optional_segments(context, "transcript_segments")
+    let transcript_segments = context_optional_segments(context, "transcript_segments_merged")
+      .or_else(|| context_optional_segments(context, "transcript_segments"))
       .ok_or_else(|| anyhow!("字幕片段缺失"))?;
     let transcript_source = context_optional_source(context, "transcript_source")
       .ok_or_else(|| anyhow!("字幕来源缺失"))?;
