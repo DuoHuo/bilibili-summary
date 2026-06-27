@@ -487,6 +487,63 @@ fn build_whisper_audio_name(url: &str) -> Result<String, String> {
   Ok(format!("audio-{nanos}"))
 }
 
+/// 将 cookie 输入解析为 yt-dlp 可用的 `cookies.txt` 文件路径。
+///
+/// 接受两种形式：
+/// - 已存在的 Netscape cookies.txt 文件路径 → 原样返回
+/// - `key=value; key=value; ...` 形式的 cookie 串 → 写入临时 Netscape 文件
+///
+/// 统一走 `--cookies <file>`，规避 `--add-header "Cookie: ..."` 在新版 yt-dlp 中
+/// 只附加到媒体下载、不发到元数据 API 的行为（B 站 `playurl` 因此 412）。
+fn prepare_ytdlp_cookies(
+  url: &str,
+  cookie: Option<&str>,
+  output_dir: &Path
+) -> Result<Option<PathBuf>, String> {
+  let Some(value) = cookie.map(str::trim).filter(|s| !s.is_empty()) else {
+    return Ok(None);
+  };
+
+  // 已存在的文件路径：原样使用
+  let candidate = PathBuf::from(value);
+  if candidate.is_file() {
+    return Ok(Some(candidate));
+  }
+
+  // Cookie 串：写入 Netscape 格式
+  if !value.contains('=') {
+    return Err(format!(
+      "cookie 字段既不是已存在的文件，也不是有效的 cookie 字符串: {value}"
+    ));
+  }
+
+  let domain = url::Url::parse(url)
+    .ok()
+    .and_then(|u| u.host_str().map(str::to_owned))
+    .and_then(|h| {
+      let parts: Vec<&str> = h.split('.').collect();
+      (parts.len() >= 2).then(|| parts[parts.len() - 2..].join("."))
+    })
+    .ok_or_else(|| "无法解析 URL 域名".to_string())?;
+
+  let mut content = String::from("# Netscape HTTP Cookie File\n");
+  for pair in value.split(';') {
+    let Some((name, val)) = pair.trim().split_once('=') else {
+      continue;
+    };
+    content.push_str(&format!(
+      ".{domain}\tTRUE\t/\tFALSE\t0\t{}\t{}\n",
+      name.trim(),
+      val.trim()
+    ));
+  }
+
+  let cookie_file = output_dir.join("cookies.txt");
+  fs::write(&cookie_file, content).map_err(|e| format!("写入 cookie 文件失败: {e}"))?;
+  info!("🍪 cookie 已写入临时文件: {}", cookie_file.display());
+  Ok(Some(cookie_file))
+}
+
 fn download_audio_with_ytdlp(url: &str, cookie: Option<&str>, output_dir: &Path) -> Result<PathBuf, String> {
   // 使用 yt-dlp 拉取音频并转为 16k 单声道 wav
   let output_name = build_whisper_audio_name(url)?;
@@ -495,18 +552,7 @@ fn download_audio_with_ytdlp(url: &str, cookie: Option<&str>, output_dir: &Path)
     .to_string_lossy()
     .to_string();
 
-  let mut cookie_path: Option<PathBuf> = None;
-  let mut cookie_header: Option<String> = None;
-  if let Some(cookie_value) = cookie {
-    let trimmed = cookie_value.trim();
-    if !trimmed.is_empty() {
-      if trimmed.contains('=') && trimmed.contains(';') {
-        cookie_header = Some(trimmed.to_string());
-      } else {
-        cookie_path = Some(PathBuf::from(trimmed));
-      }
-    }
-  }
+  let cookie_file = prepare_ytdlp_cookies(url, cookie, output_dir)?;
 
   let mut command = Command::new("yt-dlp");
   command
@@ -521,12 +567,8 @@ fn download_audio_with_ytdlp(url: &str, cookie: Option<&str>, output_dir: &Path)
     .arg(output_template)
     .arg(url);
 
-  if let Some(path) = cookie_path {
+  if let Some(path) = cookie_file {
     command.arg("--cookies").arg(path);
-  }
-
-  if let Some(header_value) = cookie_header {
-    command.arg("--add-header").arg(format!("Cookie: {header_value}"));
   }
 
   let status = command
@@ -567,20 +609,8 @@ pub fn download_video_with_ytdlp(
     .to_string_lossy()
     .to_string();
 
-  let mut cookie_path: Option<PathBuf> = None;
-  let mut cookie_header: Option<String> = None;
-  if let Some(cookie_value) = cookie {
-    let trimmed = cookie_value.trim();
-    if !trimmed.is_empty() {
-      if trimmed.contains('=') && trimmed.contains(';') {
-        cookie_header = Some(trimmed.to_string());
-      } else {
-        cookie_path = Some(PathBuf::from(trimmed));
-      }
-    }
-  }
-
   fs::create_dir_all(output_dir).map_err(|_| "创建视频目录失败".to_string())?;
+  let cookie_file = prepare_ytdlp_cookies(url, cookie, output_dir)?;
 
   let mut command = Command::new("yt-dlp");
   command
@@ -592,12 +622,8 @@ pub fn download_video_with_ytdlp(
     .arg(output_template)
     .arg(url);
 
-  if let Some(path) = cookie_path {
+  if let Some(path) = cookie_file {
     command.arg("--cookies").arg(path);
-  }
-
-  if let Some(header_value) = cookie_header {
-    command.arg("--add-header").arg(format!("Cookie: {header_value}"));
   }
 
   let status = command
