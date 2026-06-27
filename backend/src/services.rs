@@ -907,11 +907,108 @@ fn resolve_endpoint(base_url: Option<&str>) -> Result<(String, &'static str), St
   Ok(("https://api.openai.com/v1/chat/completions".to_string(), "gpt-4o-mini"))
 }
 
+/// Timestamp 模式：贪心合并相邻 segment 直到累计时长达到阈值。
+/// 见 `docs/superpowers/specs/2026-06-27-three-modes-design.md` §4.3 Step 2。
+const TIMESTAMP_MERGE_THRESHOLD_SECS: f64 = 15.0;
+
+fn merge_transcript_segments(
+  segments: Vec<TranscriptSegment>,
+  target_duration_secs: f64
+) -> Vec<TranscriptSegment> {
+  if segments.is_empty() {
+    return vec![];
+  }
+  let mut chunks: Vec<TranscriptSegment> = Vec::new();
+  let mut cur = segments[0].clone();
+  for next in segments.into_iter().skip(1) {
+    if next.end - cur.start < target_duration_secs {
+      cur.text.push(' ');
+      cur.text.push_str(&next.text);
+      cur.end = next.end;
+    } else {
+      chunks.push(std::mem::replace(&mut cur, next));
+    }
+  }
+  chunks.push(cur);
+  chunks
+}
+
 pub fn format_transcript_source(source: TranscriptSource) -> &'static str {
   // 字幕来源文本化
   match source {
     TranscriptSource::Subtitle => "平台字幕",
     TranscriptSource::Whisper => "本地 Whisper 转写",
     TranscriptSource::WhisperRefined => "本地 Whisper 转写（模型润色）"
+  }
+}
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn seg(start: f64, end: f64, text: &str) -> TranscriptSegment {
+    TranscriptSegment { start, end, text: text.to_string() }
+  }
+
+  #[test]
+  fn merge_empty_returns_empty() {
+    assert!(merge_transcript_segments(vec![], 15.0).is_empty());
+  }
+
+  #[test]
+  fn merge_single_short_segment_kept_as_is() {
+    let result = merge_transcript_segments(vec![seg(0.0, 2.0, "你好")], 15.0);
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0].start, 0.0);
+    assert_eq!(result[0].end, 2.0);
+    assert_eq!(result[0].text, "你好");
+  }
+
+  #[test]
+  fn merge_single_segment_over_threshold_kept_as_is() {
+    let result = merge_transcript_segments(vec![seg(0.0, 20.0, "长段")], 15.0);
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0].end, 20.0);
+    assert_eq!(result[0].text, "长段");
+  }
+
+  #[test]
+  fn merge_concatenates_until_threshold_reached() {
+    // A(0-3) B(3-7) C(7-12) D(12-18)
+    // 加 B: 7-0=7 < 15 → merge AB(0-7)
+    // 加 C: 12-0=12 < 15 → merge ABC(0-12)
+    // 加 D: 18-0=18 ≥ 15 → push ABC, cur=D(12-18)
+    // 末尾 push D
+    let inputs = vec![
+      seg(0.0, 3.0, "A"),
+      seg(3.0, 7.0, "B"),
+      seg(7.0, 12.0, "C"),
+      seg(12.0, 18.0, "D")
+    ];
+    let result = merge_transcript_segments(inputs, 15.0);
+    assert_eq!(result.len(), 2);
+    assert_eq!(result[0].start, 0.0);
+    assert_eq!(result[0].end, 12.0);
+    assert_eq!(result[0].text, "A B C");
+    assert_eq!(result[1].start, 12.0);
+    assert_eq!(result[1].end, 18.0);
+    assert_eq!(result[1].text, "D");
+  }
+
+  #[test]
+  fn merge_last_chunk_can_be_short() {
+    // A(0-5) B(5-10) C(10-15) D(15-17)
+    // 加 B: 10-0=10 < 15 → merge AB(0-10)
+    // 加 C: 15-0=15 ≥ 15 → push AB, cur=C(10-15)
+    // 加 D: 17-10=7 < 15 → merge CD(10-17)
+    let inputs = vec![
+      seg(0.0, 5.0, "A"),
+      seg(5.0, 10.0, "B"),
+      seg(10.0, 15.0, "C"),
+      seg(15.0, 17.0, "D")
+    ];
+    let result = merge_transcript_segments(inputs, 15.0);
+    assert_eq!(result.len(), 2);
+    assert_eq!(result[0].text, "A B");
+    assert_eq!(result[1].text, "C D");
   }
 }
