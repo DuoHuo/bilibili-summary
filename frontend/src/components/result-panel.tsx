@@ -19,6 +19,7 @@ import {
   TabsList,
   TabsTrigger
 } from "@/components/ui/tabs"
+import type { PromptMode } from "@/lib/prompts"
 import type { SummarizeResult, TranscriptSource } from "@/lib/types"
 
 interface ResultPanelProps {
@@ -27,6 +28,7 @@ interface ResultPanelProps {
   loading: boolean
   apiBase: string
   normalizedMarkdown: string
+  mode: PromptMode
   onCopyMarkdown: () => void
   onDownloadMarkdown: () => void
   onDownloadHtml: () => void
@@ -44,6 +46,7 @@ export function ResultPanel({
   loading,
   apiBase,
   normalizedMarkdown,
+  mode,
   onCopyMarkdown,
   onDownloadMarkdown,
   onDownloadHtml,
@@ -102,18 +105,13 @@ export function ResultPanel({
             )}
           </div>
           <h2 className="display-md text-ink">{result.title || "未命名视频"}</h2>
-          {result.summary && (
-            <p className="font-serif text-lg italic leading-relaxed text-body">
-              {result.summary}
-            </p>
-          )}
         </header>
 
         <Tabs defaultValue="markdown" className="w-full">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <TabsList>
               <TabsTrigger value="markdown">摘要</TabsTrigger>
-              <TabsTrigger value="transcript">字幕</TabsTrigger>
+              {mode === "timestamp" && <TabsTrigger value="transcript">字幕</TabsTrigger>}
               <TabsTrigger value="raw">原始 Markdown</TabsTrigger>
             </TabsList>
 
@@ -153,15 +151,17 @@ export function ResultPanel({
             </article>
           </TabsContent>
 
-          <TabsContent value="transcript">
-            {transcript ? (
-              <pre className="overflow-x-auto rounded-lg bg-surface-dark p-5 font-mono text-[13px] leading-relaxed text-on-dark">
-                {transcript}
-              </pre>
-            ) : (
-              <p className="text-sm text-muted">无可用字幕。</p>
-            )}
-          </TabsContent>
+          {mode === "timestamp" && (
+            <TabsContent value="transcript">
+              {transcript ? (
+                <pre className="overflow-x-auto rounded-lg bg-surface-dark p-5 font-mono text-[13px] leading-relaxed text-on-dark">
+                  {transcript}
+                </pre>
+              ) : (
+                <p className="text-sm text-muted">无可用字幕。</p>
+              )}
+            </TabsContent>
+          )}
 
           <TabsContent value="raw">
             <pre className="overflow-x-auto rounded-lg bg-surface-soft p-5 font-mono text-[13px] leading-relaxed text-body">

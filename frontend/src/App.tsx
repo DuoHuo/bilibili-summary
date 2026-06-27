@@ -283,6 +283,7 @@ function App() {
         loading={loading}
         apiBase={apiBase}
         normalizedMarkdown={normalizedMarkdown}
+        mode={config.promptMode}
         onCopyMarkdown={handleCopyMarkdown}
         onDownloadMarkdown={() => handleDownload("markdown")}
         onDownloadHtml={() => handleDownload("html")}
