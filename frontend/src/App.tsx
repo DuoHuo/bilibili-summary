@@ -1,29 +1,30 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
-import {
-  Clock,
-  FileText,
-  Home,
-  Settings2,
-  Sparkles,
-  SquarePen
-} from "lucide-react"
+import { useCallback, useEffect, useState } from "react"
+import { Clock, FileText, Home, Settings2, Sparkles, SquarePen, Trash2 } from "lucide-react"
 import { toast, Toaster } from "sonner"
 
 import { CustomPromptDialog } from "@/components/custom-prompt-dialog"
 import { LoginDialog } from "@/components/login-dialog"
-import { ResultPanel } from "@/components/result-panel"
+import { ModeResultTabs } from "@/components/mode-result-tabs"
 import { SessionList } from "@/components/session-list"
 import { SettingsView, type SettingsTab } from "@/components/settings-panel"
 import { SpikeMark } from "@/components/spike-mark"
 import { UrlForm } from "@/components/url-form"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog"
 import { loadConfig, saveConfig } from "@/lib/config"
 import { fetchNavInfo, logoutBili } from "@/lib/biliAuth"
 import { LEGACY_PROMPT, type PromptMode } from "@/lib/prompts"
-import type { BiliProfile, SummarizeResult, UserConfig } from "@/lib/types"
-import { readSessionOutput, useSessionManager } from "@/lib/sessions"
+import type { BiliProfile, UserConfig } from "@/lib/types"
+import { useSessionManager } from "@/lib/sessions"
 import { testLlmConnection, type ProbeResult } from "@/lib/llmProbe"
-import { stripMarkdownTitle } from "@/core/render/markdown"
-import { openPath, saveFileDialog, tauriHttpFetch } from "@/lib/tauri"
+import { tauriHttpFetch } from "@/lib/tauri"
 
 /** macOS Overlay 标题栏需为红绿灯按钮留出左侧空间 */
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent)
@@ -50,96 +51,6 @@ function greeting(): string {
   return "晚上好"
 }
 
-function normalizeTranscriptSection(markdown: string) {
-  const timestampPattern = /\[\d{2}:\d{2}(?:-\d{2}:\d{2})?\]/g
-  const formatListBlock = (items: string[]) => `\n${items.join("\n")}\n`
-  const splitTimestampLine = (line: string) => {
-    const matches = Array.from(line.matchAll(/(\[\d{2}:\d{2}(?:-\d{2}:\d{2})?\])\s*([^[]*)/g))
-    if (matches.length < 1) {
-      return null
-    }
-    const output: string[] = []
-    let lastTimestamp = ""
-    matches.forEach((match) => {
-      const timestamp = match[1]
-      const text = match[2].trim()
-      if (timestamp === lastTimestamp && !text) {
-        return
-      }
-      lastTimestamp = timestamp
-      output.push(`- ${timestamp} ${text}`.trim())
-    })
-    return output.filter((item) => item !== "-")
-  }
-  const normalizeTimestampRepeats = (text: string) => {
-    let result = text
-    let previous = ""
-    const repeatPattern = /(\[\d{2}:\d{2}(?:-\d{2}:\d{2})?\])\s*\1/g
-    while (result !== previous) {
-      previous = result
-      result = result.replace(repeatPattern, "$1")
-    }
-    return result
-  }
-  const normalizeLines = (text: string, forceList: boolean) => {
-    const lines = text.replace(/\r\n/g, "\n").split("\n")
-    const output: string[] = []
-    lines.forEach((line) => {
-      const trimmed = normalizeTimestampRepeats(line.trim())
-      if (!trimmed) {
-        return
-      }
-      if (/^\s*[-*]\s+/.test(trimmed)) {
-        output.push(trimmed)
-        return
-      }
-      const listItems = splitTimestampLine(trimmed)
-      if (listItems) {
-        output.push(...listItems)
-        return
-      }
-      if (forceList) {
-        output.push(`- ${trimmed}`)
-      } else {
-        output.push(trimmed)
-      }
-    })
-    return output.join("\n")
-  }
-
-  const headingMatch = markdown.match(/^(#+)\s*字幕摘录\s*$/m)
-  if (!headingMatch || headingMatch.index === undefined) {
-    const lines = markdown.replace(/\r\n/g, "\n").split("\n")
-    const normalized = lines
-      .map((line) => {
-        const normalizedLine = normalizeTimestampRepeats(line)
-        const matches = normalizedLine.match(timestampPattern)
-        if (matches && matches.length >= 1) {
-          const listItems = splitTimestampLine(normalizedLine)
-          return listItems ? formatListBlock(listItems) : normalizedLine
-        }
-        return normalizedLine
-      })
-      .join("\n")
-    return normalized
-  }
-  const heading = headingMatch[1]
-  const startIndex = headingMatch.index
-  const sectionStart = startIndex + headingMatch[0].length
-  const rest = markdown.slice(sectionStart)
-  const nextHeadingRegex = new RegExp(`^#{1,${heading.length}}\\s+`, "m")
-  const nextMatch = rest.match(nextHeadingRegex)
-  const sectionEnd = nextMatch && nextMatch.index !== undefined
-    ? sectionStart + nextMatch.index
-    : markdown.length
-  const sectionBody = markdown.slice(sectionStart, sectionEnd).trim()
-  if (/^\s*[-*]\s+/m.test(sectionBody)) {
-    return markdown
-  }
-  const normalizedBody = normalizeLines(sectionBody, true)
-  return `${markdown.slice(0, sectionStart)}\n\n${normalizedBody}\n${markdown.slice(sectionEnd)}`
-}
-
 const DEFAULT_CONFIG: UserConfig = {
   apiKey: "",
   model: "",
@@ -162,8 +73,11 @@ function App() {
   // 跳设置时的初始 Tab（如未填 API Key 引导到「模型」）
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>("account")
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
-  const [activeResult, setActiveResult] = useState<SummarizeResult | null>(null)
-  const { sessions, start, cancel, remove, rerun } = useSessionManager({ config })
+  // 首页模式卡片选中的模式：决定结果页默认激活的 Tab
+  const [selectedMode, setSelectedMode] = useState<PromptMode>("summary")
+  // 待确认删除的 session
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null)
+  const { sessions, start, generate, cancel, cancelMode, remove } = useSessionManager({ config })
 
   const activeSession =
     activeRunId ? (sessions.find((s) => s.run_id === activeRunId) ?? null) : null
@@ -190,45 +104,6 @@ function App() {
     if (!configReady) return
     saveConfig(config).catch(() => {})
   }, [config, configReady])
-
-  // DEV-only：?qa 注入合成结果，便于视觉 QA（生产构建被 tree-shake）。
-  useEffect(() => {
-    if (!import.meta.env.DEV) return
-    if (!new URLSearchParams(window.location.search).has("qa")) return
-    setActiveResult({
-      run_id: "qa00000001",
-      title: "【示例】B站视频标题：TypeScript 与 Tauri 入门",
-      summary: "示例",
-      markdown: [
-        "# 核心摘要",
-        "",
-        "本视频介绍了 **TypeScript** 与 Tauri 的组合实践，覆盖：",
-        "",
-        "- 前端单栈：React + Vite 的类型安全",
-        "- 桌面能力：yt-dlp / ffmpeg 的 sidecar 调度",
-        "- 本地转录：Whisper 端侧运行",
-        "",
-        "## 亮点",
-        "",
-        "1. 依赖注入隔离核心层与系统能力",
-        "2. GUI 只是薄壳，逻辑可测试",
-        "",
-        "> 示例数据，仅用于视觉 QA。",
-        "",
-        "## 字幕摘录",
-        "",
-        "[00:05-00:12] 今天我们来聊聊 TypeScript 与 Tauri。",
-        "[00:15-00:30] GUI 只是薄壳，核心逻辑在 TS 核心层。"
-      ].join("\n"),
-      html: "<p>qa</p>",
-      transcript_segments: [
-        { start: 5, end: 12, text: "大家好，欢迎收看本期视频。" },
-        { start: 15, end: 30, text: "今天我们来聊聊 TypeScript 与 Tauri。" }
-      ],
-      transcript_source: "subtitle"
-    })
-    setView("session")
-  }, [])
 
   const patchConfig = useCallback((patch: Partial<UserConfig>) => {
     setConfig((prev) => ({ ...prev, ...patch }))
@@ -274,19 +149,12 @@ function App() {
     }
   }, [configReady, config.cookie, config.biliProfile, patchConfig])
 
-  const normalizedMarkdown = useMemo(
-    () =>
-      activeResult
-        ? normalizeTranscriptSection(stripMarkdownTitle(activeResult.markdown))
-        : "",
-    [activeResult]
-  )
-
   // 测试 LLM 连接（设置页「模型」Tab）：用当前配置发最小请求
   const handleTestConnection = useCallback(async (): Promise<ProbeResult> => {
     return testLlmConnection(tauriHttpFetch, config.apiKey, config.model, config.baseUrl)
   }, [config.apiKey, config.model, config.baseUrl])
 
+  // 提交 URL：新建任务 → 字幕准备（懒生成各模式在结果 Tab 内触发）
   const handleSubmit = useCallback(async () => {
     if (!url.trim()) {
       toast.error("请输入视频链接")
@@ -298,118 +166,72 @@ function App() {
       setView("settings")
       return
     }
-
-    const runId = await start(url.trim())
+    setUrl("")
+    // 自动生成选中模式（字幕准备完成后立即开始）；其他模式懒生成
+    const runId = await start(url.trim(), selectedMode)
     if (runId) {
       setActiveRunId(runId)
       setView("session")
     }
-  }, [config, url, start])
-
-  // 切换 active session：从磁盘读回产物。
-  useEffect(() => {
-    let active = true
-    // 未选择 session（含 QA 注入场景）时不干预 activeResult。
-    if (!activeRunId) return
-    if (!activeSession) {
-      setActiveResult(null)
-      return
-    }
-    if (activeSession.status !== "done") {
-      setActiveResult(null)
-      return
-    }
-    readSessionOutput(activeSession)
-      .then((result) => {
-        if (active) setActiveResult(result)
-      })
-      .catch(() => {
-        if (active) setActiveResult(null)
-      })
-    return () => {
-      active = false
-    }
-  }, [activeRunId, activeSession])
+  }, [config.apiKey, url, start, selectedMode])
 
   const handleSelectSession = useCallback((runId: string) => {
     setActiveRunId(runId)
     setView("session")
   }, [])
 
+  // 侧边栏取消：preparing 整体取消；模式生成中取消该模式
   const handleCancelSession = useCallback(
     (runId: string) => {
-      void cancel(runId)
+      const s = sessions.find((x) => x.run_id === runId)
+      if (!s) return
+      if (s.status === "preparing") {
+        void cancel(runId)
+        return
+      }
+      const runningMode = (Object.keys(s.modes) as PromptMode[]).find(
+        (m) => s.modes[m]?.status === "running"
+      )
+      if (runningMode) void cancelMode(runId, runningMode)
     },
-    [cancel]
+    [sessions, cancel, cancelMode]
   )
 
   const handleRemoveSession = useCallback(
-    (runId: string) => {
+    async (runId: string) => {
       if (runId === activeRunId) {
         setActiveRunId(null)
         setView("home")
       }
-      void remove(runId)
+      try {
+        await remove(runId)
+      } catch {
+        toast.error("删除失败", { description: "产物目录可能被占用，请稍后重试" })
+      }
     },
     [activeRunId, remove]
   )
 
-  const handleRerunSession = useCallback(
-    (runId: string) => {
-      void rerun(runId)
-    },
-    [rerun]
-  )
-
-  const handleCopyMarkdown = useCallback(async () => {
-    if (!activeResult) return
-    await navigator.clipboard.writeText(
-      normalizedMarkdown || activeResult.markdown
-    )
-    toast.success("已复制 Markdown 到剪贴板")
-  }, [normalizedMarkdown, activeResult])
-
-  const handleDownload = useCallback(
-    async (kind: "markdown" | "html") => {
-      if (!activeResult) return
-      const isMarkdown = kind === "markdown"
-      const content = isMarkdown ? activeResult.markdown : activeResult.html
-      const ext = isMarkdown ? "md" : "html"
-      const saved = await saveFileDialog(`${activeResult.title || "bilibili"}.${ext}`, content)
-      if (saved) {
-        toast.success(`已保存 .${ext}`)
-      }
-    },
-    [activeResult]
-  )
-
-  const handleOpenOutput = useCallback(async () => {
-    if (!activeSession?.outputDir) return
-    await openPath(activeSession.outputDir)
-  }, [activeSession])
-
-  const handleCopyOutput = useCallback(async () => {
-    if (!activeSession?.outputDir) return
-    await navigator.clipboard.writeText(activeSession.outputDir)
-    toast.success("已复制产物目录路径")
-  }, [activeSession])
+  // 首页模式卡片：选择结果页默认 Tab；自定义卡片打开模板编辑
+  const handleModeCard = useCallback((mode: PromptMode) => {
+    if (mode === "custom") {
+      setCustomPromptOpen(true)
+      return
+    }
+    setSelectedMode(mode)
+  }, [])
 
   const handleNewSummary = useCallback(() => {
     setView("home")
     setActiveRunId(null)
-    setActiveResult(null)
   }, [])
 
-  const handleModeCard = useCallback(
-    (mode: PromptMode) => {
-      if (mode === "custom") {
-        setCustomPromptOpen(true)
-        return
-      }
-      patchConfig({ promptMode: mode })
-    },
-    [patchConfig]
-  )
+  // 确认删除：真正执行移除
+  const confirmDelete = useCallback(async () => {
+    if (!pendingDelete) return
+    await handleRemoveSession(pendingDelete)
+    setPendingDelete(null)
+  }, [pendingDelete, handleRemoveSession])
 
   return (
     <div className="relative flex h-screen bg-canvas text-ink">
@@ -432,15 +254,9 @@ function App() {
         <nav className="flex flex-col gap-1 px-3">
           <SidebarButton
             icon={Home}
-            label="新摘要"
+            label="新任务"
             active={view === "home"}
             onClick={handleNewSummary}
-          />
-          <SidebarButton
-            icon={Settings2}
-            label="设置"
-            active={view === "settings"}
-            onClick={() => setView("settings")}
           />
         </nav>
 
@@ -451,14 +267,22 @@ function App() {
             activeRunId={activeRunId}
             onSelect={handleSelectSession}
             onCancel={handleCancelSession}
-            onRemove={handleRemoveSession}
-            onRerun={handleRerunSession}
+            onRemove={setPendingDelete}
           />
         </div>
 
-        <div className="flex items-center gap-2 px-5 pb-5 text-xs text-muted-soft">
-          <span className="size-1.5 rounded-full bg-success" />
-          本地引擎就绪 · v0.1.0
+        {/* 左下角：设置入口 + 状态行 */}
+        <div className="flex shrink-0 flex-col gap-1 border-t border-hairline px-3 pt-2">
+          <SidebarButton
+            icon={Settings2}
+            label="设置"
+            active={view === "settings"}
+            onClick={() => setView("settings")}
+          />
+          <div className="flex items-center gap-2 px-5 pb-5 text-xs text-muted-soft">
+            <span className="size-1.5 rounded-full bg-success" />
+            本地引擎就绪 · v0.1.0
+          </div>
         </div>
       </aside>
 
@@ -478,32 +302,14 @@ function App() {
               initialTab={settingsInitialTab}
               onTestConnection={handleTestConnection}
             />
-          ) : (view === "session" && activeSession) || (view === "session" && activeResult) ? (
-            <div className="mx-auto flex w-full max-w-[1000px] flex-col gap-4 px-6 pb-10">
-              <div className="glass card-shadow rounded-2xl border border-hairline p-3">
-                <UrlForm
-                  variant="compact"
-                  url={url}
-                  onUrlChange={setUrl}
-                  onSubmit={handleSubmit}
-                  loading={activeSession?.status === "running"}
-                  disabled={!url.trim() || !config.apiKey.trim()}
-                  promptMode={config.promptMode}
-                  onPromptModeChange={(mode) => patchConfig({ promptMode: mode })}
-                  onOpenCustomPrompt={() => setCustomPromptOpen(true)}
-                />
-              </div>
-              <ResultPanel
-                result={activeResult}
-                error={activeSession && (activeSession.status === "error" || activeSession.status === "cancelled") ? activeSession.error ?? (activeSession.status === "cancelled" ? "任务已取消" : "生成失败") : ""}
-                loading={activeSession?.status === "running"}
-                normalizedMarkdown={normalizedMarkdown}
-                mode={activeSession?.mode ?? config.promptMode}
-                onCopyMarkdown={handleCopyMarkdown}
-                onDownloadMarkdown={() => handleDownload("markdown")}
-                onDownloadHtml={() => handleDownload("html")}
-                onOpenOutput={handleOpenOutput}
-                onCopyOutput={handleCopyOutput}
+          ) : view === "session" && activeSession ? (
+            <div className="mx-auto w-full max-w-[1000px] px-6 pb-10 pt-4">
+              <ModeResultTabs
+                session={activeSession}
+                initialMode={selectedMode}
+                onGenerate={(mode) => void generate(activeRunId!, mode)}
+                onCancelMode={(mode) => void cancelMode(activeRunId!, mode)}
+                onEditCustom={() => setCustomPromptOpen(true)}
               />
             </div>
           ) : (
@@ -512,7 +318,7 @@ function App() {
                 {greeting()}，把链接交给我吧
               </h1>
               <p className="mt-3 text-center text-sm text-muted">
-                粘贴视频链接，自动抓取字幕并生成结构化摘要。
+                粘贴视频链接，自动抓取字幕。四种模式基于同一份字幕按需生成。
               </p>
 
               <div className="glass card-shadow mt-8 w-full rounded-2xl border border-hairline p-4">
@@ -523,18 +329,13 @@ function App() {
                   onSubmit={handleSubmit}
                   loading={false}
                   disabled={!url.trim() || !config.apiKey.trim()}
-                  promptMode={config.promptMode}
-                  onPromptModeChange={(mode) => patchConfig({ promptMode: mode })}
-                  onOpenCustomPrompt={() => setCustomPromptOpen(true)}
                 />
               </div>
+
               <div className="mt-4 grid w-full gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {MODE_CARDS.map((card) => {
                   const Icon = card.icon
-                  const active =
-                    card.value === "custom"
-                      ? config.promptMode === "custom"
-                      : config.promptMode === card.value
+                  const active = selectedMode === card.value
                   return (
                     <button
                       key={card.value}
@@ -572,6 +373,26 @@ function App() {
         onSuccess={handleLoginSuccess}
       />
 
+      <Dialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>删除任务</DialogTitle>
+            <DialogDescription>
+              将删除该任务及其全部产物（摘要 / 字幕 / 音频 / 截图目录），此操作不可恢复。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setPendingDelete(null)}>
+              取消
+            </Button>
+            <Button variant="destructive" onClick={() => void confirmDelete()}>
+              <Trash2 />
+              确认删除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Toaster />
     </div>
   )
@@ -603,6 +424,5 @@ function SidebarButton({
     </button>
   )
 }
-
 
 export default App

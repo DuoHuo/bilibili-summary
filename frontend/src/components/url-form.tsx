@@ -1,9 +1,8 @@
-import { Clock, FileText, Loader2, Search, Sparkles, SquarePen } from "lucide-react"
+import { Loader2, Search } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import type { PromptMode } from "@/lib/prompts"
 
 interface UrlFormProps {
   variant?: "hero" | "compact"
@@ -12,20 +11,7 @@ interface UrlFormProps {
   onSubmit: () => void
   loading: boolean
   disabled: boolean
-  promptMode: PromptMode
-  onPromptModeChange: (mode: PromptMode) => void
-  onOpenCustomPrompt: () => void
 }
-
-const MODE_OPTIONS: ReadonlyArray<{
-  value: PromptMode
-  label: string
-  icon: typeof Sparkles
-}> = [
-  { value: "summary", label: "摘要", icon: Sparkles },
-  { value: "fulltext", label: "全文", icon: FileText },
-  { value: "timestamp", label: "时间戳", icon: Clock }
-]
 
 export function UrlForm({
   variant = "compact",
@@ -33,10 +19,7 @@ export function UrlForm({
   onUrlChange,
   onSubmit,
   loading,
-  disabled,
-  promptMode,
-  onPromptModeChange,
-  onOpenCustomPrompt
+  disabled
 }: UrlFormProps) {
   if (variant === "hero") {
     return (
@@ -47,7 +30,7 @@ export function UrlForm({
         }}
         className="flex w-full flex-col gap-3"
       >
-        {/* 输入框与生成按钮同一行；hero 态的自定义入口由下方模式卡片提供 */}
+        {/* 输入框与生成按钮同一行 */}
         <div className="flex items-center gap-2">
           <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-soft" />
@@ -93,51 +76,8 @@ export function UrlForm({
           aria-label="视频链接"
         />
       </div>
-      <ModeSegmented promptMode={promptMode} onPromptModeChange={onPromptModeChange} />
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={onOpenCustomPrompt}
-        className="text-muted"
-      >
-        <SquarePen className="size-3.5" />
-        自定义
-      </Button>
       <SubmitButton loading={loading} disabled={disabled} />
     </form>
-  )
-}
-
-function ModeSegmented({
-  promptMode,
-  onPromptModeChange
-}: {
-  promptMode: PromptMode
-  onPromptModeChange: (mode: PromptMode) => void
-}) {
-  return (
-    <div className="inline-flex rounded-lg border border-hairline bg-surface-soft p-0.5">
-      {MODE_OPTIONS.map((option) => {
-        const Icon = option.icon
-        const active = promptMode === option.value
-        return (
-          <button
-            key={option.value}
-            type="button"
-            onClick={() => onPromptModeChange(option.value)}
-            className={`inline-flex items-center gap-1.5 rounded-[7px] px-3 py-1 text-xs transition-colors ${
-              active
-                ? "bg-surface-cream-strong text-ink"
-                : "text-muted hover:text-ink"
-            }`}
-          >
-            <Icon className="size-3.5" />
-            {option.label}
-          </button>
-        )
-      })}
-    </div>
   )
 }
 

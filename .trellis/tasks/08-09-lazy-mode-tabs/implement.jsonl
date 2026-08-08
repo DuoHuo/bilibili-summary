@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "frontend 层规范入口"}
+{"file": ".trellis/spec/frontend/core-guidelines.md", "reason": "core 层拆分规范（依赖注入/纯函数）"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "session/mode 状态机设计"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "SessionMeta guard 迁移与类型设计"}

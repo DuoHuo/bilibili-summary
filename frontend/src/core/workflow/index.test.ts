@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
 import type { ExternalRunResult, HttpFetch, HttpResponse, SummarizeDeps } from "../types"
-import { runSummarize } from "./index"
+import { generateMode, prepareTranscript } from "./index"
 import type { PromptMode } from "@/lib/prompts"
 
 function jsonResponse(payload: unknown, status = 200): HttpResponse {
@@ -44,7 +44,7 @@ function makeEnv(overrides: Partial<FakeEnv> = {}): FakeEnv {
     ...overrides
   }
 
-  // 模拟文件系统：wav 首次检查（前置缓存命中）为 false，下载后存在为 true。
+  // 模拟文件系统：wav 首次检查为 false，下载后存在为 true。
   const wavSeen = new Set<string>()
 
   let llmCall = 0
@@ -104,103 +104,74 @@ function makeEnv(overrides: Partial<FakeEnv> = {}): FakeEnv {
   return env
 }
 
-function baseInput(overrides: Partial<Parameters<typeof runSummarize>[0]> = {}) {
+const BVID_URL = "https://www.bilibili.com/video/BV1xx411c7mD"
+
+function prepareInput(overrides: Record<string, unknown> = {}) {
   return {
-    url: "https://www.bilibili.com/video/BV1xx411c7mD",
-    api_key: "sk-test",
-    model: null,
-    base_url: null,
-    prompt: null,
+    url: BVID_URL,
     cookie: null,
     stt_language: "zh-cn" as const,
-    screenshot: false,
-    mode: "summary" as PromptMode,
+    run_id: "run-test-001",
     ...overrides
   }
 }
 
-describe("runSummarize 字幕路径（B 站）", () => {
-  it("生成完整输出并落盘产物", async () => {
+function generateInput(overrides: Record<string, unknown> = {}) {
+  return {
+    run_id: "run-test-001",
+    url: BVID_URL,
+    cookie: null,
+    title: "【示例】B站视频标题：TypeScript 与 Tauri 入门",
+    transcript: {
+      text: "[00:00-00:03] 大家好\n[00:03-00:06] 今天聊聊",
+      segments: [
+        { start: 0, end: 3, text: "大家好" },
+        { start: 3, end: 6, text: "今天聊聊" }
+      ],
+      source: "subtitle" as const
+    },
+    mode: "summary" as PromptMode,
+    custom_prompt: null,
+    api_key: "sk-test",
+    model: null,
+    base_url: null,
+    screenshot: false,
+    ...overrides
+  }
+}
+
+describe("prepareTranscript（字幕准备）", () => {
+  it("B 站字幕路径：返回 title/transcript 并落盘 txt + json", async () => {
     const env = makeEnv()
-    const output = await runSummarize(baseInput(), env.deps)
+    const prepared = await prepareTranscript(prepareInput(), env.deps)
 
-    expect(output.title).toBe("【示例】B站视频标题：TypeScript 与 Tauri 入门")
-    expect(output.summary).toBe(MAIN_SUMMARY)
-    expect(output.transcript_source).toBe("subtitle")
-    expect(output.markdown).toContain("# 【示例】B站视频标题：TypeScript 与 Tauri 入门")
-    expect(output.markdown).toContain("## 摘要")
-    expect(output.markdown).toContain("## 视频信息")
-    expect(output.markdown).toContain("- 生成时间: 2026-08-08 12:34:56")
-    expect(output.html).toContain("<!doctype html>")
-    expect(output.html).toContain("中文副标题 / English Sub")
-    expect(output.html).toContain("印章 / Seal")
-
-    // 产物文件
-    const md = env.writes.find((w) => w.path.endsWith(".md"))
-    const html = env.writes.find((w) => w.path.endsWith(".html"))
-    const txt = env.writes.find((w) => w.path.endsWith(".txt"))
-    expect(md).toBeDefined()
-    expect(html).toBeDefined()
-    expect(txt).toBeDefined()
-
-    // 阶段顺序
+    expect(prepared.title).toBe("【示例】B站视频标题：TypeScript 与 Tauri 入门")
+    expect(prepared.transcript.source).toBe("subtitle")
     expect(env.stages[0]).toBe("detect")
     expect(env.stages).toContain("fetch_subtitle")
-    expect(env.stages).toContain("llm")
-    expect(env.stages).toContain("render")
-    expect(env.stages[env.stages.length - 1]).toBe("done")
     expect(env.stages).not.toContain("whisper")
+    expect(env.stages).not.toContain("llm")
+
+    const txt = env.writes.find((w) => w.path.endsWith(".txt"))
+    const json = env.writes.find((w) => w.path.endsWith(".json"))
+    expect(txt).toBeDefined()
+    expect(json).toBeDefined()
+    expect(JSON.parse(json!.content).segments).toHaveLength(2)
   })
 
-  it("timestamp 模式：1:1 修正 + 15s 合并 + 时间戳摘要", async () => {
-    const env = makeEnv()
-    const env2 = makeEnv()
-    const output = await runSummarize(
-      baseInput({ mode: "timestamp" }),
-      env.deps
-    )
-    expect(output.transcript_segments).toBeDefined()
-    // 摘要格式为 [mm:ss-mm:ss] 块
-    expect(output.summary).toMatch(/^\[00:0\d-00:0\d\] /)
-    void env2
-  })
-
-  it("html labels 调用失败时降级默认文案", async () => {
-    const env = makeEnv()
-    const originalHttp = env.deps.http
-    let llmCall = 0
-    env.deps.http = async (url, init) => {
-      const resp = await originalHttp(url, init)
-      if (url.includes("/chat/completions")) {
-        llmCall++
-        if (llmCall === 2) throw new Error("labels failed")
-      }
-      return resp
-    }
-    const output = await runSummarize(baseInput(), env.deps)
-    expect(output.html).toContain("东方简约信纸 · bilibili summary")
-  })
-})
-
-describe("runSummarize whisper 路径", () => {
-  it("无字幕时触发 yt-dlp + whisper-cli", async () => {
+  it("whisper 路径：无字幕时触发 yt-dlp + whisper-cli", async () => {
     const env = makeEnv({ hasSubtitle: false })
-    const output = await runSummarize(baseInput(), env.deps)
+    const prepared = await prepareTranscript(prepareInput(), env.deps)
 
     expect(env.stages).toContain("whisper")
-    const ytDlp = env.runnerCalls.find((c) => c.program === "yt-dlp")
-    const whisperCli = env.runnerCalls.find((c) => c.program === "whisper-cli")
-    expect(ytDlp).toBeDefined()
-    expect(whisperCli).toBeDefined()
-    expect(output.transcript_source).toBe("whisper")
-    expect(output.transcript).toContain("转写一")
+    expect(env.runnerCalls.some((c) => c.program === "yt-dlp")).toBe(true)
+    expect(env.runnerCalls.some((c) => c.program === "whisper-cli")).toBe(true)
+    expect(prepared.transcript.source).toBe("whisper")
   })
-})
 
-describe("runSummarize 平台与错误", () => {
   it("不支持的平台抛错", async () => {
     const env = makeEnv()
-    await expect(runSummarize(baseInput({ url: "https://vimeo.com/1" }), env.deps)).rejects.toThrow(
+    await expect(prepareTranscript(prepareInput({ url: "https://vimeo.com/1" }), env.deps)).rejects.toThrow(
       "暂不支持该链接"
     )
   })
@@ -208,7 +179,33 @@ describe("runSummarize 平台与错误", () => {
   it("无效 B 站链接抛错", async () => {
     const env = makeEnv()
     await expect(
-      runSummarize(baseInput({ url: "https://www.bilibili.com/video/av123" }), env.deps)
+      prepareTranscript(prepareInput({ url: "https://www.bilibili.com/video/av123" }), env.deps)
     ).rejects.toThrow("无效的 B 站链接")
+  })
+})
+
+describe("generateMode（按模式懒生成）", () => {
+  it("summary 模式：生成完整输出并落盘 {mode}.md", async () => {
+    const env = makeEnv()
+    const output = await generateMode(generateInput(), env.deps)
+
+    expect(output.summary).toBe(MAIN_SUMMARY)
+    expect(output.transcript_source).toBe("subtitle")
+    expect(output.markdown).toContain("# 【示例】B站视频标题：TypeScript 与 Tauri 入门")
+    expect(output.markdown).toContain("## 摘要")
+    expect(output.markdown).toContain("## 视频信息")
+    expect(output.markdown).toContain("- 生成时间: 2026-08-08 12:34:56")
+
+    expect(env.writes.some((w) => w.path.endsWith("/summary.md"))).toBe(true)
+    expect(env.stages).toContain("llm")
+    expect(env.stages).toContain("render")
+    expect(env.stages[env.stages.length - 1]).toBe("done")
+  })
+
+  it("timestamp 模式：1:1 修正 + 15s 合并 + 时间戳摘要", async () => {
+    const env = makeEnv()
+    const output = await generateMode(generateInput({ mode: "timestamp" }), env.deps)
+    expect(output.summary).toMatch(/^\[00:0\d-00:0\d\] /)
+    expect(output.transcript_segments).toBeDefined()
   })
 })

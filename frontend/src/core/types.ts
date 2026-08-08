@@ -38,10 +38,32 @@ export interface SummarizeOutput {
   title: string
   summary: string
   markdown: string
-  html: string
   transcript: string
   transcript_segments: TranscriptSegment[]
   transcript_source: TranscriptSource
+}
+
+/** 阶段一：字幕准备请求（一次性，多模式共享） */
+export interface PrepareRequest {
+  url: string
+  cookie: string | null
+  stt_language: "zh-cn" | "en"
+  run_id?: string
+}
+
+/** 阶段二：按模式生成请求（懒触发） */
+export interface GenerateRequest {
+  run_id: string
+  url: string
+  cookie: string | null
+  title: string
+  transcript: Transcript
+  mode: PromptMode
+  custom_prompt: string | null
+  api_key: string
+  model: string | null
+  base_url: string | null
+  screenshot: boolean
 }
 
 /** 流水线阶段，用于进度上报 */

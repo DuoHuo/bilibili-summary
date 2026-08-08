@@ -6,7 +6,6 @@ import {
   ClipboardCopy,
   Download,
   ExternalLink,
-  FileCode,
   Link2
 } from "lucide-react"
 
@@ -30,9 +29,8 @@ interface ResultPanelProps {
   mode: PromptMode
   onCopyMarkdown: () => void
   onDownloadMarkdown: () => void
-  onDownloadHtml: () => void
+  onOpenOriginal: () => void
   onOpenOutput: () => void
-  onCopyOutput: () => void
 }
 const SOURCE_LABEL: Record<NonNullable<TranscriptSource>, string> = {
   subtitle: "官方字幕",
@@ -47,9 +45,8 @@ export function ResultPanel({
   mode,
   onCopyMarkdown,
   onDownloadMarkdown,
-  onDownloadHtml,
-  onOpenOutput,
-  onCopyOutput
+  onOpenOriginal,
+  onOpenOutput
 }: ResultPanelProps) {
   const source = result?.transcript_source ?? null
 
@@ -108,9 +105,9 @@ export function ResultPanel({
         <Tabs defaultValue="markdown" className="w-full">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <TabsList>
-              <TabsTrigger value="markdown">摘要</TabsTrigger>
+              <TabsTrigger value="markdown">预览</TabsTrigger>
               {mode === "timestamp" && <TabsTrigger value="transcript">字幕</TabsTrigger>}
-              <TabsTrigger value="raw">原始 Markdown</TabsTrigger>
+              <TabsTrigger value="raw">原文</TabsTrigger>
             </TabsList>
 
             <div className="flex flex-wrap items-center gap-1">
@@ -122,19 +119,15 @@ export function ResultPanel({
                 <Download className="size-3.5" />
                 .md
               </Button>
-              <Button variant="ghost" size="sm" onClick={onDownloadHtml}>
-                <FileCode className="size-3.5" />
-                .html
-              </Button>
               {result.run_id && (
                 <>
-                  <Button variant="ghost" size="sm" onClick={onOpenOutput}>
+                  <Button variant="ghost" size="sm" onClick={onOpenOriginal}>
                     <ExternalLink className="size-3.5" />
-                    产物
+                    原网页
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={onCopyOutput}>
+                  <Button variant="ghost" size="sm" onClick={onOpenOutput}>
                     <Link2 className="size-3.5" />
-                    链接
+                    产物
                   </Button>
                 </>
               )}
@@ -171,7 +164,7 @@ export function ResultPanel({
         <Separator />
 
         <p className="text-xs text-muted-soft">
-          产物已保存到本地目录（.md / .html / .txt），点击上方「产物」打开，或「链接」复制路径。
+          产物已保存到本地目录（.md / .txt / 音频 / 截图），点击上方「产物」打开。
         </p>
       </div>
     </Frame>

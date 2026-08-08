@@ -1,5 +1,5 @@
-import { runSummarize } from "@/core/workflow"
-import type { SummarizeResult } from "./types"
+import { generateMode, prepareTranscript } from "@/core/workflow"
+import type { GenerateRequest, PrepareRequest, SummarizeOutput } from "@/core/types"
 import type { PromptMode } from "./prompts"
 import {
   ensureWhisperModel,
@@ -12,18 +12,25 @@ import {
   writeTextFile
 } from "./tauri"
 
-export interface SummarizePayload {
+export interface PreparePayload {
   url: string
+  cookie: string | null
+  stt_language: "zh-cn" | "en"
+  run_id?: string
+}
+
+export interface GeneratePayload {
+  run_id: string
+  url: string
+  cookie: string | null
+  title: string
+  transcript: import("@/core/types").Transcript
+  mode: PromptMode
+  custom_prompt: string | null
   api_key: string
   model: string | null
   base_url: string | null
-  prompt: string | null
-  cookie: string | null
-  stt_language: "zh-cn" | "en"
   screenshot: boolean
-  mode: PromptMode
-  /** 会话层预生成的 run_id（产物目录 + 进度路由） */
-  run_id?: string
 }
 
 export class SummarizeError extends Error {
@@ -35,52 +42,59 @@ export class SummarizeError extends Error {
   }
 }
 
-/**
- * 桌面版摘要入口：把 Tauri 系统能力注入 core 层工作流。
- * 替代旧 web 版的 HTTP 调用；`apiBase` 参数保留仅为兼容调用点，不再使用。
- */
-export async function postSummarize(
-  _apiBase: string,
-  payload: SummarizePayload,
+const tauriDeps = {
+  http: tauriHttpFetch,
+  runner: tauriRunner,
+  resolveModelPath: ensureWhisperModel,
+  resolveOutputDir,
+  ensureDir,
+  writeFile: writeTextFile,
+  readFile: readTextFile,
+  isFile: pathIsFile
+}
+
+/** 阶段一：字幕准备（一次性）。 */
+export async function runPrepare(
+  payload: PreparePayload,
   onProgress?: (stage: string, detail?: string) => void
-): Promise<SummarizeResult> {
+): Promise<{ run_id: string; run_dir: string; title: string; transcript: import("@/core/types").Transcript }> {
   try {
-    const output = await runSummarize(
+    return await prepareTranscript(
       {
         url: payload.url,
+        cookie: payload.cookie,
+        stt_language: payload.stt_language,
+        run_id: payload.run_id
+      } satisfies PrepareRequest,
+      { ...tauriDeps, onProgress }
+    )
+  } catch (err) {
+    throw new SummarizeError(err instanceof Error ? err.message : String(err), "")
+  }
+}
+
+/** 阶段二：按模式懒生成。 */
+export async function runGenerate(
+  payload: GeneratePayload,
+  onProgress?: (stage: string, detail?: string) => void
+): Promise<SummarizeOutput> {
+  try {
+    return await generateMode(
+      {
+        run_id: payload.run_id,
+        url: payload.url,
+        cookie: payload.cookie,
+        title: payload.title,
+        transcript: payload.transcript,
+        mode: payload.mode,
+        custom_prompt: payload.custom_prompt,
         api_key: payload.api_key,
         model: payload.model,
         base_url: payload.base_url,
-        prompt: payload.prompt,
-        cookie: payload.cookie,
-        stt_language: payload.stt_language,
-        screenshot: payload.screenshot,
-        mode: payload.mode,
-        run_id: payload.run_id
-      },
-      {
-        http: tauriHttpFetch,
-        runner: tauriRunner,
-        resolveModelPath: ensureWhisperModel,
-        resolveOutputDir,
-        ensureDir,
-        writeFile: writeTextFile,
-        readFile: readTextFile,
-        isFile: pathIsFile,
-        onProgress
-      }
+        screenshot: payload.screenshot
+      } satisfies GenerateRequest,
+      { ...tauriDeps, onProgress }
     )
-
-    return {
-      run_id: output.run_id,
-      title: output.title,
-      summary: output.summary,
-      markdown: output.markdown,
-      html: output.html,
-      transcript: output.transcript,
-      transcript_segments: output.transcript_segments,
-      transcript_source: output.transcript_source
-    }
   } catch (err) {
     throw new SummarizeError(err instanceof Error ? err.message : String(err), "")
   }

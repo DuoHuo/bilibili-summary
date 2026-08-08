@@ -318,3 +318,29 @@ pub fn remove_dir(path: String) -> Result<(), String> {
     }
     std::fs::remove_dir_all(dir).map_err(|e| format!("删除目录失败: {e}"))
 }
+
+#[cfg(test)]
+mod remove_dir_tests {
+    use super::remove_dir;
+    use std::fs;
+
+    /// 删除包含嵌套目录与文件的整个 session 目录。
+    #[test]
+    fn removes_nested_session_dir() {
+        let dir = std::env::temp_dir().join(format!("rmdir-session-{}", std::process::id()));
+        fs::create_dir_all(dir.join("images")).unwrap();
+        fs::write(dir.join("summary.md"), "# x").unwrap();
+        fs::write(dir.join("images/a.jpg"), "img").unwrap();
+        fs::write(dir.join("transcript.txt"), "t").unwrap();
+
+        remove_dir(dir.to_string_lossy().to_string()).unwrap();
+        assert!(!dir.exists(), "目录应被整体删除");
+    }
+
+    /// 目录不存在时视为成功（幂等）。
+    #[test]
+    fn missing_dir_is_ok() {
+        let dir = std::env::temp_dir().join("definitely-missing-session-xyz");
+        remove_dir(dir.to_string_lossy().to_string()).unwrap();
+    }
+}

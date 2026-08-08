@@ -1,121 +1,80 @@
 ---
+name: bilibili summary — Dark macOS Glass
 version: alpha
-name: Claude-design-analysis
-description: A warm-canvas editorial interface for Anthropic's Claude product. The system anchors on a tinted cream canvas with serif display headlines, warm coral CTAs, and dark navy product surfaces (code editor mockups, model showcase cards). Brand voltage comes from the cream/coral pairing — deliberately warm and humanist where most AI brands use cool blue + slate. Type voice runs a slab-serif display ("Copernicus" / Tiempos Headline) for h1/h2 and a humanist sans for body. The signature Anthropic black-radial-spike mark anchors the wordmark.
-
+description: 深色分层玻璃主题。near-black 画布 + 白色 alpha 玻璃面板 + hairline 描边 + coral 强调，衬线 display 编辑式排版。
 colors:
+  canvas: "#131315"
+  surface-soft: rgba(255, 255, 255, 0.05)
+  surface-card: rgba(255, 255, 255, 0.08)
+  surface-cream-strong: rgba(255, 255, 255, 0.12)
+  surface-dark: "#0b0b0c"
+  surface-dark-elevated: "#232326"
+  surface-dark-soft: "#1a1a1d"
+  hairline: rgba(255, 255, 255, 0.09)
+  hairline-soft: rgba(255, 255, 255, 0.05)
+  ink: "#f4f2ed"
+  body-strong: "#e8e6e1"
+  body: "#c9c7c2"
+  muted: "#9b9994"
+  muted-soft: "#75736d"
   primary: "#cc785c"
   primary-active: "#a9583e"
-  primary-disabled: "#e6dfd8"
-  ink: "#141413"
-  body: "#3d3d3a"
-  body-strong: "#252523"
-  muted: "#6c6a64"
-  muted-soft: "#8e8b82"
-  hairline: "#e6dfd8"
-  hairline-soft: "#ebe6df"
-  canvas: "#faf9f5"
-  surface-soft: "#f5f0e8"
-  surface-card: "#efe9de"
-  surface-cream-strong: "#e8e0d2"
-  surface-dark: "#181715"
-  surface-dark-elevated: "#252320"
-  surface-dark-soft: "#1f1e1b"
+  primary-disabled: "#3a3835"
   on-primary: "#ffffff"
-  on-dark: "#faf9f5"
+  on-dark: "#f4f2ed"
   on-dark-soft: "#a09d96"
   accent-teal: "#5db8a6"
   accent-amber: "#e8a55a"
   success: "#5db872"
   warning: "#d4a017"
-  error: "#c64545"
-
+  error: "#e06c6c"
 typography:
   display-xl:
-    fontFamily: "Copernicus, Tiempos Headline, serif"
-    fontSize: 64px
-    fontWeight: 400
+    fontFamily: Cormorant Garamond
+    fontSize: clamp(40px, 6vw, 64px)
+    fontWeight: "500"
     lineHeight: 1.05
     letterSpacing: -1.5px
   display-lg:
-    fontFamily: "Copernicus, Tiempos Headline, serif"
-    fontSize: 48px
-    fontWeight: 400
+    fontFamily: Cormorant Garamond
+    fontSize: clamp(32px, 4.5vw, 48px)
+    fontWeight: "500"
     lineHeight: 1.1
     letterSpacing: -1px
   display-md:
-    fontFamily: "Copernicus, Tiempos Headline, serif"
-    fontSize: 36px
-    fontWeight: 400
+    fontFamily: Cormorant Garamond
+    fontSize: clamp(26px, 3.2vw, 36px)
+    fontWeight: "500"
     lineHeight: 1.15
     letterSpacing: -0.5px
   display-sm:
-    fontFamily: "Copernicus, Tiempos Headline, serif"
+    fontFamily: Cormorant Garamond
     fontSize: 28px
-    fontWeight: 400
+    fontWeight: "500"
     lineHeight: 1.2
     letterSpacing: -0.3px
-  title-lg:
-    fontFamily: "StyreneB, Inter, sans-serif"
-    fontSize: 22px
-    fontWeight: 500
-    lineHeight: 1.3
-    letterSpacing: 0
-  title-md:
-    fontFamily: "StyreneB, Inter, sans-serif"
-    fontSize: 18px
-    fontWeight: 500
-    lineHeight: 1.4
-    letterSpacing: 0
-  title-sm:
-    fontFamily: "StyreneB, Inter, sans-serif"
-    fontSize: 16px
-    fontWeight: 500
-    lineHeight: 1.4
-    letterSpacing: 0
-  body-md:
-    fontFamily: "StyreneB, Inter, sans-serif"
-    fontSize: 16px
-    fontWeight: 400
-    lineHeight: 1.55
-    letterSpacing: 0
-  body-sm:
-    fontFamily: "StyreneB, Inter, sans-serif"
-    fontSize: 14px
-    fontWeight: 400
-    lineHeight: 1.55
-    letterSpacing: 0
-  caption:
-    fontFamily: "StyreneB, Inter, sans-serif"
-    fontSize: 13px
-    fontWeight: 500
-    lineHeight: 1.4
-    letterSpacing: 0
   caption-uppercase:
-    fontFamily: "StyreneB, Inter, sans-serif"
+    fontFamily: Inter
     fontSize: 12px
-    fontWeight: 500
+    fontWeight: "500"
     lineHeight: 1.4
     letterSpacing: 1.5px
+  body-md:
+    fontFamily: Inter
+    fontSize: 16px
+    fontWeight: "400"
+  body-sm:
+    fontFamily: Inter
+    fontSize: 14px
+    fontWeight: "400"
+  label-sm:
+    fontFamily: Inter
+    fontSize: 14px
+    fontWeight: "500"
   code:
-    fontFamily: "JetBrains Mono, ui-monospace, monospace"
+    fontFamily: JetBrains Mono
     fontSize: 14px
-    fontWeight: 400
-    lineHeight: 1.6
-    letterSpacing: 0
-  button:
-    fontFamily: "StyreneB, Inter, sans-serif"
-    fontSize: 14px
-    fontWeight: 500
-    lineHeight: 1
-    letterSpacing: 0
-  nav-link:
-    fontFamily: "StyreneB, Inter, sans-serif"
-    fontSize: 14px
-    fontWeight: 500
-    lineHeight: 1.4
-    letterSpacing: 0
-
+    fontWeight: "400"
 rounded:
   xs: 4px
   sm: 6px
@@ -123,467 +82,214 @@ rounded:
   lg: 12px
   xl: 16px
   pill: 9999px
-  full: 9999px
-
 spacing:
-  xxs: 4px
-  xs: 8px
-  sm: 12px
-  md: 16px
-  lg: 24px
-  xl: 32px
-  xxl: 48px
-  section: 96px
-
+  unit: 4px
+  card-padding: 32px
+  card-gap: 32px
+  form-gap: 16px
+  sidebar-x: 12px
+  sidebar-x-wide: 20px
+  nav-item-y: 8px
+  mode-card-padding: 16px
 components:
+  glass-card:
+    backgroundColor: rgba(255, 255, 255, 0.04)
+    textColor: "{colors.ink}"
+    rounded: "{rounded.xl}"
+    border: 1px solid "{colors.hairline}"
+  glass-card-raised:
+    backgroundColor: rgba(255, 255, 255, 0.04)
+    textColor: "{colors.ink}"
+    rounded: "{rounded.xl}"
+    border: 1px solid "{colors.hairline}"
+    padding: "{spacing.card-padding}"
+    boxShadow: 0 8px 32px rgba(0, 0, 0, 0.35)
+  sidebar-button:
+    textColor: "{colors.muted}"
+    rounded: "{rounded.lg}"
+    padding: 8px 12px
+    typography: "{typography.body-sm}"
+  sidebar-button-active:
+    backgroundColor: "{colors.surface-card}"
+    textColor: "{colors.ink}"
   button-primary:
     backgroundColor: "{colors.primary}"
     textColor: "{colors.on-primary}"
-    typography: "{typography.button}"
+    typography: "{typography.label-sm}"
     rounded: "{rounded.md}"
-    padding: 12px 20px
     height: 40px
+    padding: 0 20px
   button-primary-active:
     backgroundColor: "{colors.primary-active}"
-    textColor: "{colors.on-primary}"
-    rounded: "{rounded.md}"
-  button-primary-disabled:
-    backgroundColor: "{colors.primary-disabled}"
-    textColor: "{colors.muted}"
-    rounded: "{rounded.md}"
   button-secondary:
     backgroundColor: "{colors.canvas}"
     textColor: "{colors.ink}"
-    typography: "{typography.button}"
     rounded: "{rounded.md}"
-    padding: 12px 20px
     height: 40px
-  button-secondary-on-dark:
-    backgroundColor: "{colors.surface-dark-elevated}"
-    textColor: "{colors.on-dark}"
-    typography: "{typography.button}"
-    rounded: "{rounded.md}"
-    padding: 12px 20px
-  button-text-link:
+    padding: 0 20px
+    border: 1px solid "{colors.hairline}"
+  input:
     backgroundColor: transparent
     textColor: "{colors.ink}"
-    typography: "{typography.button}"
-  button-icon-circular:
-    backgroundColor: "{colors.canvas}"
-    textColor: "{colors.ink}"
-    rounded: "{rounded.full}"
-    size: 36px
-  text-link:
-    backgroundColor: transparent
-    textColor: "{colors.primary}"
     typography: "{typography.body-md}"
-  top-nav:
+    rounded: "{rounded.lg}"
+    border: 1px solid "{colors.hairline}"
+  input-hero:
+    height: 48px
+    rounded: "{rounded.xl}"
+    paddingLeft: 44px
+  input-compact:
+    height: 36px
+    rounded: "{rounded.lg}"
+    paddingLeft: 36px
+  tabs-list:
+    backgroundColor: "{colors.surface-soft}"
+    rounded: "{rounded.md}"
+    padding: 4px
+  tabs-trigger-active:
     backgroundColor: "{colors.canvas}"
     textColor: "{colors.ink}"
-    typography: "{typography.nav-link}"
-    height: 64px
-  hero-band:
-    backgroundColor: "{colors.canvas}"
+    boxShadow: 0 1px 2px rgba(0, 0, 0, 0.1)
+  segmented-active:
+    backgroundColor: "{colors.surface-cream-strong}"
     textColor: "{colors.ink}"
-    typography: "{typography.display-xl}"
-    padding: 96px
-  hero-illustration-card:
-    backgroundColor: "{colors.canvas}"
+  mode-card:
+    backgroundColor: rgba(255, 255, 255, 0.04)
     textColor: "{colors.ink}"
     rounded: "{rounded.xl}"
-  feature-card:
+    border: 1px solid "{colors.hairline}"
+    padding: "{spacing.mode-card-padding}"
+  mode-card-active:
+    borderColor: rgba(204, 120, 92, 0.6)
     backgroundColor: "{colors.surface-card}"
-    textColor: "{colors.ink}"
-    typography: "{typography.title-md}"
-    rounded: "{rounded.lg}"
-    padding: 32px
-  product-mockup-card-dark:
-    backgroundColor: "{colors.surface-dark}"
-    textColor: "{colors.on-dark}"
-    typography: "{typography.title-md}"
-    rounded: "{rounded.lg}"
-    padding: 32px
-  code-window-card:
-    backgroundColor: "{colors.surface-dark}"
-    textColor: "{colors.on-dark}"
-    typography: "{typography.code}"
-    rounded: "{rounded.lg}"
-    padding: 24px
-  model-comparison-card:
-    backgroundColor: "{colors.canvas}"
-    textColor: "{colors.ink}"
-    typography: "{typography.title-md}"
-    rounded: "{rounded.lg}"
-    padding: 32px
-  pricing-tier-card:
-    backgroundColor: "{colors.canvas}"
-    textColor: "{colors.ink}"
-    typography: "{typography.title-lg}"
-    rounded: "{rounded.lg}"
-    padding: 32px
-  pricing-tier-card-featured:
-    backgroundColor: "{colors.surface-dark}"
-    textColor: "{colors.on-dark}"
-    typography: "{typography.title-lg}"
-    rounded: "{rounded.lg}"
-    padding: 32px
-  callout-card-coral:
-    backgroundColor: "{colors.primary}"
-    textColor: "{colors.on-primary}"
-    typography: "{typography.title-md}"
-    rounded: "{rounded.lg}"
-    padding: 32px
-  connector-tile:
-    backgroundColor: "{colors.canvas}"
-    textColor: "{colors.ink}"
-    typography: "{typography.title-sm}"
-    rounded: "{rounded.lg}"
-    padding: 20px
-  text-input:
-    backgroundColor: "{colors.canvas}"
-    textColor: "{colors.ink}"
-    typography: "{typography.body-md}"
-    rounded: "{rounded.md}"
-    padding: 10px 14px
-    height: 40px
-  text-input-focused:
-    backgroundColor: "{colors.canvas}"
-    textColor: "{colors.ink}"
-    rounded: "{rounded.md}"
-  cookie-consent-card:
-    backgroundColor: "{colors.surface-dark}"
-    textColor: "{colors.on-dark}"
-    typography: "{typography.body-sm}"
-    rounded: "{rounded.lg}"
-    padding: 24px
-  category-tab:
-    backgroundColor: transparent
-    textColor: "{colors.muted}"
-    typography: "{typography.nav-link}"
-    padding: 8px 14px
-    rounded: "{rounded.md}"
-  category-tab-active:
-    backgroundColor: "{colors.surface-card}"
-    textColor: "{colors.ink}"
-    typography: "{typography.nav-link}"
-    rounded: "{rounded.md}"
-  badge-pill:
-    backgroundColor: "{colors.surface-card}"
-    textColor: "{colors.ink}"
-    typography: "{typography.caption}"
-    rounded: "{rounded.pill}"
-    padding: 4px 12px
-  badge-coral:
-    backgroundColor: "{colors.primary}"
-    textColor: "{colors.on-primary}"
-    typography: "{typography.caption-uppercase}"
-    rounded: "{rounded.pill}"
-    padding: 4px 12px
-  cta-band-coral:
-    backgroundColor: "{colors.primary}"
-    textColor: "{colors.on-primary}"
-    typography: "{typography.display-sm}"
-    rounded: "{rounded.lg}"
-    padding: 64px
-  cta-band-dark:
-    backgroundColor: "{colors.surface-dark}"
-    textColor: "{colors.on-dark}"
-    typography: "{typography.display-sm}"
-    rounded: "{rounded.lg}"
-    padding: 64px
-  footer:
-    backgroundColor: "{colors.surface-dark}"
-    textColor: "{colors.on-dark-soft}"
-    typography: "{typography.body-sm}"
-    padding: 64px
+  session-status-running:
+    backgroundColor: "{colors.muted-soft}"
+  session-status-done:
+    backgroundColor: "{colors.success}"
+  session-status-error:
+    backgroundColor: "{colors.error}"
 ---
 
-## Overview
+## Brand & Style
 
-Claude.com is the warmest, most editorial interface in the AI-product category. The base atmosphere is a **tinted cream canvas** (`{colors.canvas}` — #faf9f5) — distinctly warm, deliberately not the cool gray-white that every other AI brand uses. Headlines run a **slab-serif display** ("Copernicus" / Tiempos Headline) at weight 400 with negative letter-spacing, paired with **StyreneB / Inter** body sans. The combination feels like a literary publication, not a SaaS marketing page.
+bilibili summary 是**深色、分层、玻璃质感**的 macOS 桌面壳：near-black 画布（`#131315`，带一点暖意而非纯黑）+ 白色 alpha 玻璃面板 + hairline 描边 + coral 强调。
 
-Brand voltage comes from the **cream + coral pairing** — coral (`{colors.primary}` — #cc785c) is the signature Anthropic accent, used on every primary CTA, on the brand wordmark, and on full-bleed callout cards. The coral is warm, slightly muted, never cyan/blue — a deliberate counter-positioning against OpenAI's cool slate, Google's saturated blue, and Microsoft's corporate cyan.
+品牌声音是**编辑式排版 + 深色玻璃**的结合：display 标题用衬线（Cormorant Garamond 替代 Copernicus）weight 500 + 负字距，读起来像刊物栏目；正文 Inter 无衬线 400。深色玻璃是衬线标题的舞台——玻璃折射 ambient 光晕，coral 是克制的高电压时刻。
 
-The system has three surface modes that alternate page-by-page:
-1. **Cream canvas** (`{colors.canvas}`) — default body floor
-2. **Light cream cards** (`{colors.surface-card}`) — feature card backgrounds
-3. **Dark navy product surfaces** (`{colors.surface-dark}`) — code editor mockups, model showcase cards, pre-footer CTAs, footer itself
-
-The dark surfaces are where Claude shows its product chrome — code blocks, terminal output, model comparison tables, agentic-flow diagrams. The cream-to-dark contrast is the page's pacing rhythm.
-
-**Key Characteristics:**
-- Warm cream canvas (`{colors.canvas}` — #faf9f5) with dark warm-ink text (`{colors.ink}` — #141413). The brand's defining color choice.
-- Coral primary CTA (`{colors.primary}` — #cc785c). Used scarcely on individual buttons, generously on full-bleed coral callout cards.
-- Slab-serif display headlines via Copernicus / Tiempos Headline at weight 400 with negative letter-spacing. Pairs with humanist sans body for a literary editorial voice.
-- Dark navy product mockup cards (`{colors.surface-dark}` — #181715) carrying code blocks, terminal panels, model comparison data — the brand shows the product chrome at scale rather than abstract marketing illustrations.
-- Light cream feature cards (`{colors.surface-card}` — #efe9de) — slightly darker than canvas, used for content-driven feature explanations.
-- Anthropic radial-spike mark — a small black asterisk-like glyph (4-spoke radial) — appears as the brand wordmark prefix and as a content marker.
-- Border radius is hierarchical: `{rounded.md}` (8px) for buttons + inputs, `{rounded.lg}` (12px) for content + product cards, `{rounded.xl}` (16px) for the hero illustration container, `{rounded.pill}` for badges.
-- Section rhythm `{spacing.section}` (96px) — modern-SaaS standard. Internal card padding stays generous at `{spacing.xl}` (32px).
+### Key Characteristics
+- Near-black 画布 + 白色 alpha 玻璃层（5/8/12% 三步 = hover/active/raised）。
+- Coral 稀缺使用：主 CTA、激活态、时间戳标记。
+- 衬线 display + 负字距，无衬线正文，编辑式排版。
+- 侧边栏 + 主工作区双栏玻璃壳；macOS Overlay 标题栏预留红绿灯位。
+- 阴影克制：唯一深阴影 `0 8px 32px rgba(0,0,0,0.35)`；层次来自玻璃层差。
 
 ## Colors
 
-### Brand & Accent
-- **Coral / Primary** (`{colors.primary}` — #cc785c): The signature Anthropic warm coral. Used on every primary CTA background, on full-bleed coral callout cards, on the brand wordmark accent. The most-recognized Anthropic color outside of the spike-mark logo.
-- **Coral Active** (`{colors.primary-active}` — #a9583e): The press / hover-darker variant.
-- **Coral Disabled** (`{colors.primary-disabled}` — #e6dfd8): A desaturated cream-tinted disabled state.
-- **Accent Teal** (`{colors.accent-teal}` — #5db8a6): Used sparingly on secondary product surfaces (terminal status indicators, "active connection" dots in connectors page).
-- **Accent Amber** (`{colors.accent-amber}` — #e8a55a): A small companion warm-tone used on category badges and inline highlights.
+调色板根植于**深色中性 + 单一 coral 强调**。
 
-### Surface
-- **Canvas** (`{colors.canvas}` — #faf9f5): The default page floor. Tinted cream — warm, deliberately not pure white.
-- **Surface Soft** (`{colors.surface-soft}` — #f5f0e8): Section dividers, very-soft band backgrounds.
-- **Surface Card** (`{colors.surface-card}` — #efe9de): Feature cards, content cards. One step darker than canvas.
-- **Surface Cream Strong** (`{colors.surface-cream-strong}` — #e8e0d2): A strongest-cream variant used on selected category tabs and emphasized section bands.
-- **Surface Dark** (`{colors.surface-dark}` — #181715): Code editor mockups, model showcase cards, footer. The dominant dark surface.
-- **Surface Dark Elevated** (`{colors.surface-dark-elevated}` — #252320): Elevated cards inside dark bands (settings panels in mockups).
-- **Surface Dark Soft** (`{colors.surface-dark-soft}` — #1f1e1b): Slightly lighter dark, used for code block backgrounds inside larger dark cards.
-- **Hairline** (`{colors.hairline}` — #e6dfd8): The 1px border tone on cream surfaces. Same hex as `{colors.primary-disabled}` — borders feel like one elevation step rather than ink lines.
-- **Hairline Soft** (`{colors.hairline-soft}` — #ebe6df): Barely-visible divider used inside the same band.
-
-### Text
-- **Ink** (`{colors.ink}` — #141413): All headlines and primary text. Warm dark, slightly off-pure-black.
-- **Body Strong** (`{colors.body-strong}` — #252523): Emphasized paragraphs, lead text.
-- **Body** (`{colors.body}` — #3d3d3a): Default running-text color.
-- **Muted** (`{colors.muted}` — #6c6a64): Sub-headings, breadcrumbs, footer-adjacent secondary text.
-- **Muted Soft** (`{colors.muted-soft}` — #8e8b82): Captions, fine-print, copyright lines.
-- **On Primary** (`{colors.on-primary}` — #ffffff): Text on coral buttons.
-- **On Dark** (`{colors.on-dark}` — #faf9f5): Cream-tinted white used on dark surfaces (echoes the canvas tone).
-- **On Dark Soft** (`{colors.on-dark-soft}` — #a09d96): Footer body text, secondary labels in dark mockups.
-
-### Semantic
-- **Success** (`{colors.success}` — #5db872): Green status dots, "available" indicators.
-- **Warning** (`{colors.warning}` — #d4a017): Warning callouts (rare on marketing surfaces).
-- **Error** (`{colors.error}` — #c64545): Validation errors.
+- **Canvas (`{colors.canvas}`)：** 近黑画布，应用底色。
+- **Surface 层：** 组件背景从 `rgba(255,255,255,0.05)`（soft，hover 底/TabsList）→ `0.08`（card，激活态）→ `0.12`（cream-strong，最强抬升）。`surface-dark*` 是内嵌代码/弹层的实色深底。
+- **Hairline（`{colors.hairline}`）：** 所有边框/分隔线用 white alpha 9%，视觉是一层"抬升"而非墨线。
+- **Text：** 亮字族——`ink` 暖白标题、`body`/`muted`/`muted-soft` 三级降级。
+- **Primary（`{colors.primary}` — `#cc785c`）：** 唯一交互强调色。禁用态用深色化 `#3a3835`，不在深色壳上放浅色禁用块。
+- **Semantic：** `success` 状态点/成功提示、`error` 校验失败、`warning` 少见。`accent-teal`/`accent-amber` 仅状态与徽标。
 
 ## Typography
 
-### Font Family
-The system runs **Copernicus** (or **Tiempos Headline** as substitute) as the slab-serif display face for headlines, and **StyreneB** (or **Inter** as substitute) as the humanist sans for body, navigation, and UI labels. **JetBrains Mono** handles code blocks. The fallback stack walks `Tiempos Headline, Garamond, "Times New Roman", serif` for display and `Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif` for body.
+**衬线 display + Inter body**，分界不可打破。
 
-The display/body split is editorial:
-- Copernicus serif (weight 400, negative tracking) → h1, h2, h3, hero display
-- StyreneB sans (weight 400-500) → body, navigation, buttons, captions, labels
-- JetBrains Mono → all code blocks and terminal text
+- **Hierarchy：** `display-xl`（首页问候 h1，clamp 40→64px）→ `display-lg`/`md`/`sm`（section/设置标题）→ `caption-uppercase`（Section 小标题，12px 500 + 1.5px 字距）。
+- **Display：** 衬线 500 + 负字距（-0.3 到 -1.5px）是品牌声音；没有负字距的衬线标题失去编辑气质。weight 以 400 为原则基准，深色玻璃下允许 500 补偿对比度（实现取 500），绝不超 500。
+- **Body：** Inter 400 为主，标签/强调 500；说明文字统一 `text-xs muted`（`body-sm`）。
+- **Legibility：** 深色玻璃上正文 14px 默认（桌面紧凑布局），输入框 16px。
 
-### Hierarchy
+## Layout & Spacing
 
-| Token | Size | Weight | Line Height | Letter Spacing | Use |
-|---|---|---|---|---|---|
-| `{typography.display-xl}` | 64px | 400 | 1.05 | -1.5px | Homepage h1 ("Meet your thinking partner") — Copernicus serif |
-| `{typography.display-lg}` | 48px | 400 | 1.1 | -1px | Section heads — Copernicus |
-| `{typography.display-md}` | 36px | 400 | 1.15 | -0.5px | Sub-section heads, model names — Copernicus |
-| `{typography.display-sm}` | 28px | 400 | 1.2 | -0.3px | Pricing tier names, callout headlines — Copernicus |
-| `{typography.title-lg}` | 22px | 500 | 1.3 | 0 | Pricing plan size labels — StyreneB |
-| `{typography.title-md}` | 18px | 500 | 1.4 | 0 | Feature card titles, intro paragraphs |
-| `{typography.title-sm}` | 16px | 500 | 1.4 | 0 | Connector tile titles, list labels |
-| `{typography.body-md}` | 16px | 400 | 1.55 | 0 | Default running-text — StyreneB |
-| `{typography.body-sm}` | 14px | 400 | 1.55 | 0 | Footer body, fine-print |
-| `{typography.caption}` | 13px | 500 | 1.4 | 0 | Badge labels, captions |
-| `{typography.caption-uppercase}` | 12px | 500 | 1.4 | 1.5px | Category tags, "NEW" badges |
-| `{typography.code}` | 14px | 400 | 1.6 | 0 | Code blocks — JetBrains Mono |
-| `{typography.button}` | 14px | 500 | 1.0 | 0 | Standard button labels |
-| `{typography.nav-link}` | 14px | 500 | 1.4 | 0 | Top-nav menu items |
+**固定侧边栏 + 弹性主区的玻璃壳**，4px 基准网格。
 
-### Principles
-Display sizes use weight 400 (regular), never bold. Negative letter-spacing (-0.3 to -1.5px) is essential — Copernicus without it reads as off-brand. The serif character is what gives Anthropic its literary, considered voice; switching to a sans-serif display would make Claude feel like every other AI tool.
-
-Body type stays at weight 400 for paragraphs, weight 500 for labels and emphasized phrases. The sans body is humanist (StyreneB) — never geometric. Inter is an acceptable substitute because of its similar humanist proportions; Helvetica or Arial would be too neutral and break the warm-editorial feel.
-
-### Note on Font Substitutes
-If Copernicus / Tiempos Headline is unavailable, **Cormorant Garamond** at weight 500 with -0.02em letter-spacing is the closest open-source approximation. **EB Garamond** is a fallback. For StyreneB, **Inter** is the closest match — both are humanist sans designed for screen reading. **Söhne** is another close alternative if licensed.
-
-## Layout
-
-### Spacing System
-- **Base unit:** 4px.
-- **Tokens:** `{spacing.xxs}` 4px · `{spacing.xs}` 8px · `{spacing.sm}` 12px · `{spacing.md}` 16px · `{spacing.lg}` 24px · `{spacing.xl}` 32px · `{spacing.xxl}` 48px · `{spacing.section}` 96px.
-- **Section padding:** `{spacing.section}` (96px) — modern-SaaS rhythm.
-- **Card internal padding:** `{spacing.xl}` (32px) for feature cards, pricing tier cards, model comparison cards; `{spacing.lg}` (24px) for code-window cards and connector tiles.
-- **Callout / CTA bands:** `{spacing.xxl}` (48px) inside coral callout cards; 64px inside the larger dark CTA band.
-
-### Grid & Container
-- **Max content width:** ~1200px centered.
-- **Editorial body:** Single 12-column grid; hero often uses 6/6 split (h1 left, illustration right).
-- **Feature card grids:** 3-up at desktop, 2-up at tablet, 1-up at mobile.
-- **Connector tile grids:** 4-up or 6-up at desktop, 2-up at tablet, 1-up at mobile.
-- **Pricing grid:** 3-up at desktop (Free / Pro / Team / Enterprise often), 1-up at mobile.
-
-### Whitespace Philosophy
-The cream canvas + serif display + generous internal padding create an editorial pacing — Claude reads like a long-form magazine column rather than a marketing template. Whitespace between bands stays uniform at 96px; whitespace inside cards is generous (32px), letting type breathe.
+- **Shell：** 侧边栏 `w-[232px]`（glass-strong + `border-r hairline`），内部自上而下：`h-12` 拖拽区（macOS `pl-[70px]` 让出红绿灯）→ 品牌行（SpikeMark + 衬线 wordmark）→ 导航（SidebarButton）→ 会话列表 → 底部状态行（绿点 + "本地引擎就绪 · v0.1.0"）。
+- **Rhythm：** 玻璃卡内边距 32px、区块间距 32px、表单字段间距 16px；侧边栏 `px-3`（12px）/`px-5`（20px）。
+- **Content width：** Home hero `max-w-[880px]`（`pt-[8vh]` 垂直呼吸）、结果视图 `max-w-[1000px]`、设置 `max-w-2xl`，主区水平居中。
+- **Grid：** 模式卡片 `sm:grid-cols-2 lg:grid-cols-4`；设置表单字段 `sm:grid-cols-2`（窄屏回单列）。
 
 ## Elevation & Depth
 
+**层次来自玻璃 alpha 差 + hairline 抬升，阴影仅一处。**
+
 | Level | Treatment | Use |
 |---|---|---|
-| Flat | No shadow, no border | Body sections, top nav, hero bands |
-| Soft hairline | 1px `{colors.hairline}` border | Inputs, sub-nav, occasionally on cards |
-| Cream card | `{colors.surface-card}` background — no shadow | Feature cards, content cards |
-| Dark surface card | `{colors.surface-dark}` background — no shadow | Code editor mockups, model showcase cards |
-| Subtle drop shadow | Faint shadow at low alpha | Hover-elevated states (the system uses `0 1px 3px rgba(20,20,19,0.08)` rarely) |
+| Ambient | `.ambient-bg` 固定径向光晕，`pointer-events-none`，壳根部唯一实例 | 玻璃折射的光源 |
+| Flat | 画布，无边框 | 主工作区底、拖拽条 |
+| Glass | `rgba(255,255,255,0.04)` + `blur(20px) saturate(150%)` + `border-hairline` | 表单卡、模式卡、设置页卡 |
+| Glass strong | 更高 alpha + 同 blur | 侧边栏 |
+| Raised | Glass + `card-shadow`（`0 8px 32px rgba(0,0,0,0.35)`） | 主要功能卡 |
+| Surface-dark | `surface-dark*` 实色深底 | 代码/转写内容、弹层 |
 
-The elevation philosophy is **color-block first, shadow rare**. Most depth comes from the cream-vs-dark surface contrast. Shadows are minimal. The dark surface mockups have their own internal product chrome (code editor scrollbars, line numbers, syntax highlighting) which adds detail without needing external shadows.
-
-### Decorative Depth
-- The Anthropic spike-mark glyph (4-spoke radial asterisk) appears as a small black mark in the brand wordmark and inline as a content marker.
-- Code editor mockups carry their own internal depth: syntax-highlighted text in muted blues / oranges / grays, line numbers in `{colors.muted-soft}`, status bars at the bottom in `{colors.surface-dark-elevated}`.
-- Some hero illustrations use simple line-art with coral and dark-navy strokes on cream — minimal, hand-drawn-feeling, never photorealistic.
+- **Edge：** 每个玻璃面必须 1px `hairline` 边框。
+- **Shadow：** 极克制——仅 `card-shadow` 一处，分离层次而不显重。
+- **Forbidden：** 深色壳内不放不透明浅色面板（杀死玻璃分层）。
 
 ## Shapes
 
-### Border Radius Scale
+有机、克制的圆角体系。
 
-| Token | Value | Use |
-|---|---|---|
-| `{rounded.xs}` | 4px | Reserved for badge accents and tiny dropdowns |
-| `{rounded.sm}` | 6px | Small inline buttons, dropdown items |
-| `{rounded.md}` | 8px | Standard CTA buttons, text inputs, category tabs |
-| `{rounded.lg}` | 12px | Content cards (feature, pricing, code-window, model-comparison) |
-| `{rounded.xl}` | 16px | Hero illustration container, the larger marquee components |
-| `{rounded.pill}` | 9999px | Badge pills, "NEW" tags |
-| `{rounded.full}` | 9999px / 50% | Avatar substitutes, icon buttons |
-
-### Photography & Illustrations
-Claude's hero rarely uses photography. Instead it uses:
-- Simple line-art illustrations with coral + dark-navy strokes on the cream canvas
-- Code editor mockups (the dominant "hero" treatment on developer-focused pages)
-- Terminal output mockups with monospace text on dark
-- Model comparison cards (Opus / Sonnet / Haiku) with abstract geometric thumbnails
-
-When photography is used (rare — mostly testimonials), avatars crop to perfect circles at 40px diameter.
+- **Cards：** `rounded-xl`（16px）玻璃容器；设置卡 `rounded-2xl`（16px）。
+- **Action：** 按钮/输入框 `rounded-md`（8px）；hero 输入框 `rounded-xl`（16px）；compact 输入框 `rounded-lg`（12px）。
+- **Details：** `rounded-[7px]` 分段内项微调、`rounded-pill` 徽章/头像圆。
+- **Icons：** lucide 线性图标（`size-4` 常规、`size-3.5` 紧凑）；头像 40px 圆（加载失败回退首字符占位 `bg-surface-soft`）；二维码白底 `rounded-lg border-hairline`。
 
 ## Components
 
-### Top Navigation
+### Glass Containers
+玻璃卡：`.glass`（4% white + blur20 saturate150）+ `border-hairline` + `rounded-2xl`；主功能卡叠加 `card-shadow`。**glass utility 本身不含边框圆角，必须显式配对。**
 
-**`top-nav`** — Cream nav bar pinned to the top of every page. 64px tall, `{colors.canvas}` background. Carries the Anthropic spike-mark + "Claude" wordmark at left, primary horizontal menu (Product, Solutions, Use Cases, Pricing, Research, Company) center-left, right-side cluster with "Sign in" text-link, "Try Claude" `{component.button-primary}` (coral). Menu items in `{typography.nav-link}` (StyreneB 14px / 500).
+### UrlForm
+- **hero**（首页空闲态）：输入框 `h-12 rounded-xl pl-11`（左侧 Search 图标）+ **生成按钮同行**（`h-12 rounded-xl px-6`）；自定义入口由下方模式卡片提供（不重复）。
+- **compact**（结果页工具栏）：`h-9 rounded-lg pl-9 text-sm` + ModeSegmented（摘要/全文/时间戳分段）+ 「自定义」ghost 按钮 + 生成按钮 `h-9 rounded-lg px-5`。
+- 生成中显示转圈 + "生成中…"。
+
+### Mode Cards
+4 张（摘要/全文/时间戳/自定义），`glass rounded-xl border p-4`；激活 `border-primary/60 bg-surface-card` + coral 图标；默认 `border-hairline hover:bg-surface-soft`。
 
 ### Buttons
+- **primary**：`bg-primary text-on-primary h-10 rounded-md px-5 text-sm`；active `primary-active`。
+- **secondary**：`bg-canvas text-ink border-hairline`（画布底 + hairline 描边）。
+- **ghost / destructive / dark / link**：按场景（次要行内 / 删除 / 深底 / 文本链接）。
 
-**`button-primary`** — The signature coral CTA. Background `{colors.primary}` (#cc785c), text `{colors.on-primary}` (white), type `{typography.button}` (StyreneB 14px / 500), padding 12px × 20px, height 40px, rounded `{rounded.md}` (8px). Active state `button-primary-active` darkens to `{colors.primary-active}` (#a9583e).
+### SettingsView（Tabs 分区）
+顶部 Tabs（`TabsList bg-surface-soft p-1 rounded-md`，激活 Trigger `bg-canvas text-ink shadow-sm`）：「账号 / 模型 / 内容处理」；每个 Tab 独立玻璃卡，内部用 `Section`（caption-uppercase 小标题 + hairline 延伸线）分组。账号卡含 B 站登录（头像/昵称/UID/退出）+ Cookie 输入；模型卡含 API Key/Base URL/模型 + 「测试连接」（结果 success/error 色）；内容处理卡含 Whisper 语言分段（选中 `surface-cream-strong`）+ 截图标注 Switch。
 
-**`button-secondary`** — Cream button with hairline outline. Background `{colors.canvas}`, text `{colors.ink}`, 1px hairline border, same padding + height + radius as primary.
+### Dialogs
+`DialogContent max-h-[90vh] overflow-y-auto p-8`；Header（Title + Description）+ 内容 + Footer（secondary 取消 + primary 确认）。LoginDialog 内嵌二维码 + 轮询状态（muted）+ 错误态（`text-error` + 重试）。
 
-**`button-secondary-on-dark`** — Used over `{colors.surface-dark}` cards. Background `{colors.surface-dark-elevated}` (#252320), text `{colors.on-dark}`. Stays dark — the system never inverts to a light secondary on dark surfaces.
-
-**`button-text-link`** — Inline text button, no background. Used for "Sign in" in the top nav and inline CTA links.
-
-**`button-icon-circular`** — 36px circular icon button. Background `{colors.canvas}`, hairline border, ink-color icon. Used for carousel arrows, share, "view more".
-
-**`text-link`** — Inline body links in `{colors.primary}` (the coral). Underlined on press; the coral inline link is one of the system's most distinctive small details.
-
-### Cards & Containers
-
-**`hero-band`** — Cream-canvas hero with a 6-6 grid: h1 + sub-headline + button row on the left, hero illustration card or product mockup card on the right. Vertical padding `{spacing.section}` (96px).
-
-**`hero-illustration-card`** — A larger card holding the hero's right-side artifact — sometimes a coral-stroke line illustration on cream background, sometimes a dark code editor mockup. Background `{colors.canvas}` or `{colors.surface-dark}` depending on context, rounded `{rounded.xl}` (16px).
-
-**`feature-card`** — Used in 3-up feature grids. Background `{colors.surface-card}` (#efe9de — slightly darker cream), rounded `{rounded.lg}` (12px), internal padding `{spacing.xl}` (32px). Carries a small icon at top, an `{typography.title-md}` headline, and a body description in `{typography.body-md}`.
-
-**`product-mockup-card-dark`** — Dark navy card showing actual Claude product chrome (chat interface, code editor, agent controls). Background `{colors.surface-dark}`, rounded `{rounded.lg}`, internal padding `{spacing.xl}` (32px). Carries text labels in `{colors.on-dark}` and product UI fragments below.
-
-**`code-window-card`** — A specialized dark card showing a code editor with line numbers, syntax-highlighted code in `{typography.code}` (JetBrains Mono), and sometimes a "Run" button or terminal output panel below. Background `{colors.surface-dark}` with `{colors.surface-dark-soft}` for the inner code block, rounded `{rounded.lg}`, padding `{spacing.lg}` (24px). The signature visual element of Claude Code product pages.
-
-**`model-comparison-card`** — Used on the homepage's "Which problem are you up against?" section comparing Opus / Sonnet / Haiku. Background `{colors.canvas}` with hairline border, rounded `{rounded.lg}`, internal padding `{spacing.xl}` (32px). Carries the model name, a short capability blurb, and a `{component.text-link}` to learn more.
-
-**`pricing-tier-card`** — Standard tier card. Background `{colors.canvas}` with hairline border, rounded `{rounded.lg}`, padding `{spacing.xl}` (32px). Carries the plan name in `{typography.title-lg}` (StyreneB), price in `{typography.display-sm}` (Copernicus serif!), feature checklist in `{typography.body-md}`, and a `{component.button-primary}` at the bottom.
-
-**`pricing-tier-card-featured`** — The featured tier (typically "Pro" or "Team"). Background flips to `{colors.surface-dark}`, text inverts to `{colors.on-dark}`. The dark surface IS the featured-tier signal.
-
-**`callout-card-coral`** — A full-bleed coral card carrying a major call-to-action. Background `{colors.primary}` (#cc785c), text `{colors.on-primary}` (white), rounded `{rounded.lg}`, padding `{spacing.xxl}` (48px). The coral surface IS the voltage; the CTA inside uses an inverted button style (cream/canvas button on coral).
-
-**`connector-tile`** — Used on the connectors page's integration grid. Background `{colors.canvas}` with hairline border, rounded `{rounded.lg}`, padding 20px. Each tile carries a logo at top, a `{typography.title-sm}` connector name, and a short description.
-
-### Inputs & Forms
-
-**`text-input`** — Standard text input. Background `{colors.canvas}`, text `{colors.ink}`, type `{typography.body-md}`, rounded `{rounded.md}` (8px), padding 10px × 14px, height 40px. 1px hairline border in `{colors.hairline}`.
-
-**`text-input-focused`** — Focus state. Border thickens or shifts to `{colors.primary}` (coral) for emphasis. Carries a 3px coral-at-15%-alpha outer ring.
-
-**`cookie-consent-card`** — Bottom-right floating dark cookie banner. Background `{colors.surface-dark}`, text `{colors.on-dark}`, rounded `{rounded.lg}`, padding `{spacing.lg}` (24px). One of the few places dark surface appears at small scale on cream pages.
-
-### Tags / Badges
-
-**`badge-pill`** — Small pill label used for category tags. Background `{colors.surface-card}`, text `{colors.ink}`, type `{typography.caption}` (13px / 500), rounded `{rounded.pill}`, padding 4px × 12px.
-
-**`badge-coral`** — Coral-fill badge for "NEW", "BETA", featured highlights. Background `{colors.primary}`, text `{colors.on-primary}`, type `{typography.caption-uppercase}` (12px / 500 / 1.5px tracking), rounded `{rounded.pill}`, padding 4px × 12px.
-
-### Tab / Filter
-
-**`category-tab`** + **`category-tab-active`** — Used in sub-nav rows on solutions / connectors pages. Inactive: transparent background, `{colors.muted}` text. Active: `{colors.surface-card}` background, `{colors.ink}` text. Padding 8px × 14px, rounded `{rounded.md}`.
-
-### CTA / Footer
-
-**`cta-band-coral`** — A pre-footer "Try Claude" CTA card. Full-width coral fill, white type, rounded `{rounded.lg}`, padding 64px. Carries an h2 in `{typography.display-sm}` (still serif!), a sub-line, and a cream-button CTA.
-
-**`cta-band-dark`** — Alternative pre-footer band on developer-focused pages. Background `{colors.surface-dark}`, text `{colors.on-dark}`, rounded `{rounded.lg}`, padding 64px. Often pairs with a code-window card.
-
-**`footer`** — Dark navy footer that closes every page. Background `{colors.surface-dark}` (#181715), text `{colors.on-dark-soft}`. 4-column link list at desktop covering Product / Company / Resources / Legal. Vertical padding 64px. The Anthropic spike-mark + "Anthropic" wordmark sits at the top in `{colors.on-dark}`. The footer never inverts.
+### SessionList / Toaster
+侧边栏会话列表：状态色点（running `muted-soft` / done `success` / error `error`）+ 标题 + 时间；hover 显示「再次生成/删除」。sonner toast：成功绿 / 错误红 + 描述行。
 
 ## Do's and Don'ts
 
 ### Do
-- Anchor every page on the cream canvas. Pure white reads as "any other AI tool"; the warm tint is the brand differentiator.
-- Use Copernicus serif for every display headline. Pair with StyreneB sans body. Negative letter-spacing on display sizes is non-negotiable.
-- Reserve `{colors.primary}` (coral) for primary CTAs and full-bleed `{component.callout-card-coral}` moments. Don't paint accent moments coral elsewhere.
-- Use `{component.product-mockup-card-dark}` and `{component.code-window-card}` to show actual Claude product chrome. Don't paint marketing illustrations of code when you can show real code.
-- Pair `{component.feature-card}` (cream) with `{component.product-mockup-card-dark}` (navy) in alternating bands. The cream-to-dark rhythm is the brand's pacing mechanism.
-- Use the Anthropic spike-mark glyph as the brand wordmark prefix. Never invert the mark to white-on-dark within the wordmark itself.
-- Apply `{spacing.section}` (96px) between major bands.
+- 面板一律 `.glass` + `border-hairline` + 圆角；深色壳上不放不透明浅色块。
+- Coral 只用于主 CTA / 激活态 / 时间戳；激活态 `border-primary/60` + `bg-surface-card`。
+- display 衬线 400–500 + 负字距；正文 Inter；代码 JetBrains Mono。
+- 分隔用 `hairline`（white alpha 9%），不用实色灰线。
+- 状态用 token 色点（success/error/muted），不自造颜色。
+- 说明文字统一 `text-xs muted`；标签 `text-sm font-medium`。
 
 ### Don't
-- Don't use cool grays or pure white for canvas. Cream is the brand.
-- Don't bold serif display weight. Copernicus at 700 reads as bombastic; the system stays at 400.
-- Don't use cool blue or saturated cyan as a brand accent. The coral is the brand voltage.
-- Don't put coral everywhere. The coral is scarce on individual elements and generous only on full-bleed coral callout cards.
-- Don't use Inter for display headlines. The serif character is the brand voice.
-- Don't repeat the same surface mode in two consecutive bands. The pacing alternates: cream → cream-card → dark-mockup → cream → coral-callout → dark-footer.
-- Don't add hover state styling beyond what the system already encodes — primary darkens on press; nothing else changes.
-
-## Responsive Behavior
-
-### Breakpoints
-
-| Name | Width | Key Changes |
-|---|---|---|
-| Mobile | < 768px | Hamburger nav; hero h1 64→32px; hero-illustration-card stacks below content; feature grids 1-up; connector tiles 2-up; pricing 1-up; footer 4 cols → 1 |
-| Tablet | 768–1024px | Top nav stays horizontal but tightens; feature cards 2-up; connector tiles 3-up; pricing 2-up |
-| Desktop | 1024–1440px | Full top-nav with all menu items; 3-up feature cards; 4-up or 6-up connector tiles; 3-up pricing tiers |
-| Wide | > 1440px | Same as desktop with more outer breathing room; max content width caps at 1200px |
-
-### Touch Targets
-- `{component.button-primary}` at minimum 40 × 40px.
-- `{component.button-icon-circular}` at exactly 36 × 36 — slightly under WCAG 44 but visually centered.
-- `{component.text-input}` height is 40px.
-- Connector tile entire card area is tappable; effective tap area >> 44px.
-
-### Collapsing Strategy
-- Top nav collapses to hamburger at < 768px; menu opens as a full-screen cream sheet.
-- Hero band's 6-6 grid collapses to single-column on mobile — h1 + sub-head + buttons first, then the illustration / mockup card below.
-- Feature grids reduce columns rather than scaling cards down.
-- Pricing tier cards collapse 4 → 2 → 1; featured-tier dark surface stays visually distinct at every breakpoint.
-- Code-window cards retain code legibility at every breakpoint by allowing horizontal scroll within the card rather than wrapping code lines.
-
-### Image Behavior
-- Code blocks inside dark mockups stay at fixed font-size; horizontal scroll on mobile rather than wrapping.
-- Hero illustrations scale proportionally; line-art strokes thin slightly on mobile.
-- Avatar photos in testimonials crop to circles at every breakpoint.
+- 不内联 hex（改 `index.css` 的 `@theme` token）。
+- 不在深色壳内放不透明 `bg-canvas` 面板（杀死玻璃分层）。
+- 不引入新品牌色（无紫卡/绿区块；teal/amber 仅状态徽标）。
+- 不在玻璃面板上叠多余阴影（只有 card-shadow 一处）。
+- 不用无衬线做 display、不加粗衬线 display 超 500。
+- 不连续两段同一表面——层次交替（画布 → glass → 抬升卡）。
 
 ## Iteration Guide
 
-1. Focus on ONE component at a time. Reference its YAML key (`{component.feature-card}`, `{component.code-window-card}`).
-2. Variants of an existing component (`-active`, `-disabled`, `-focused`) live as separate entries in `components:`.
-3. Use `{token.refs}` everywhere — never inline hex.
-4. Never document hover. Default and Active/Pressed states only.
-5. Display headlines stay Copernicus serif 400 with negative tracking. Body stays StyreneB / Inter 400. The split is unbreakable.
-6. Cream + coral + dark navy is the trinity. Don't introduce a fourth surface tone (no purple cards, no green sections).
-7. When in doubt about emphasis: bigger Copernicus serif before bolder weight.
-
-## Known Gaps
-
-- Copernicus and StyreneB are licensed Anthropic typefaces and not available as public web fonts. Substitutes (Tiempos Headline / Cormorant Garamond / EB Garamond for serif; Inter / Söhne for sans) are documented in the typography section.
-- The Anthropic radial-spike-mark is a brand glyph rendered as inline SVG; it's not formalized as a system token here. Treat it as a logo asset.
-- Animation and transition timings (chat message reveal, code block typewriter effect on the homepage, agentic-flow diagram animations) are not in scope.
-- Form validation states beyond `{component.text-input-focused}` are not extracted — error / success states would need a sign-up or feedback flow to confirm.
-- The actual Claude product surface (claude.ai chat interface) shares some tokens with the marketing site but adds many product-specific components (chat bubbles, message tools, file upload chips, conversation history sidebar) that are out of scope for this marketing-surface document.
-- The "agent" / "computer use" demo cards on certain pages display animated Claude controlling a browser — the static screenshot doesn't fully capture the animation chrome.
+1. 一次只动一个组件，参考其 token 名（`button-primary`、`glass-card`、`mode-card`）。
+2. 变体（-active / -disabled / -hover）作为独立 component 条目，不叠加样式堆。
+3. 用 `{token.refs}` 引用，绝不内联 hex——改色只改 front matter 与 `index.css`。
+4. 只记录 Default 与 Active/Pressed 态，不记录 hover 细节（由 `transition-colors` 统一）。
+5. display 保持衬线 400–500 + 负字距；body 保持 Inter 400。分界不可打破。
+6. 深色玻璃三件套：canvas + glass/hairline + coral。不引入第四种表面色调。
+7. 拿不准强调时：更大的衬线 display，而不是更粗的字重。
+8. 新增组件前先确认现成 primitives（Section / ToggleRow / Tabs / glass 卡）可复用——KISS。

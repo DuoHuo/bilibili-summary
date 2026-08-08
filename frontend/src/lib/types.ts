@@ -16,7 +16,6 @@ export interface SummarizeResult {
   title: string
   summary: string
   markdown: string
-  html: string
   transcript?: string | null
   transcript_segments?: TranscriptSegment[] | null
   transcript_source?: TranscriptSource
@@ -35,8 +34,7 @@ export function isSummarizeResult(
   return (
     typeof record.title === "string" &&
     typeof record.summary === "string" &&
-    typeof record.markdown === "string" &&
-    typeof record.html === "string"
+    typeof record.markdown === "string"
   )
 }
 
