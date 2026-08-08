@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input"
 import type { PromptMode } from "@/lib/prompts"
 
 interface UrlFormProps {
+  variant?: "hero" | "compact"
   url: string
   onUrlChange: (value: string) => void
   onSubmit: () => void
@@ -26,6 +27,7 @@ const MODE_OPTIONS: ReadonlyArray<{
 ]
 
 export function UrlForm({
+  variant = "compact",
   url,
   onUrlChange,
   onSubmit,
@@ -35,23 +37,23 @@ export function UrlForm({
   onPromptModeChange,
   onOpenCustomPrompt
 }: UrlFormProps) {
-  return (
-    <div className="flex w-full flex-col gap-2">
+  if (variant === "hero") {
+    return (
       <form
         onSubmit={(event) => {
           event.preventDefault()
           onSubmit()
         }}
-        className="flex w-full items-center gap-2"
+        className="flex w-full flex-col gap-3"
       >
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-soft" />
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-soft" />
           <Input
             type="url"
             inputMode="url"
             autoComplete="off"
             spellCheck={false}
-            className="h-10 rounded-md pl-9 text-sm"
+            className="h-12 rounded-xl border-hairline bg-transparent pl-11 text-base"
             placeholder="粘贴 Bilibili / YouTube 视频 URL"
             value={url}
             onChange={(event) => onUrlChange(event.target.value)}
@@ -59,50 +61,109 @@ export function UrlForm({
             aria-label="视频链接"
           />
         </div>
-        <Button type="submit" className="h-10 px-5" disabled={disabled || loading}>
-          {loading ? (
-            <>
-              <Loader2 className="size-4 animate-spin" />
-              生成中…
-            </>
-          ) : (
-            "生成"
-          )}
-        </Button>
-      </form>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="inline-flex rounded-md border border-hairline p-0.5">
-          {MODE_OPTIONS.map((option) => {
-            const Icon = option.icon
-            const active = promptMode === option.value
-            return (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => onPromptModeChange(option.value)}
-                className={`inline-flex items-center gap-1.5 rounded-[6px] px-3 py-1 text-xs transition-colors ${
-                  active
-                    ? "bg-primary text-white"
-                    : "text-ink hover:bg-surface-card"
-                }`}
-              >
-                <Icon className="size-3.5" />
-                {option.label}
-              </button>
-            )
-          })}
+        <div className="flex items-center justify-between gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onOpenCustomPrompt}
+            className="text-muted"
+          >
+            <SquarePen className="size-3.5" />
+            自定义模板
+          </Button>
+          <SubmitButton loading={loading} disabled={disabled} />
         </div>
-        <Button
-          type="button"
-          variant={promptMode === "custom" ? "primary" : "ghost"}
-          size="sm"
-          onClick={onOpenCustomPrompt}
-        >
-          <SquarePen className="size-3.5" />
-          自定义模板
-        </Button>
+      </form>
+    )
+  }
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault()
+        onSubmit()
+      }}
+      className="flex w-full flex-wrap items-center gap-2"
+    >
+      <div className="relative min-w-[240px] flex-1">
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-soft" />
+        <Input
+          type="url"
+          inputMode="url"
+          autoComplete="off"
+          spellCheck={false}
+          className="h-9 rounded-lg border-hairline bg-transparent pl-9 text-sm"
+          placeholder="粘贴 Bilibili / YouTube 视频 URL"
+          value={url}
+          onChange={(event) => onUrlChange(event.target.value)}
+          disabled={loading}
+          aria-label="视频链接"
+        />
       </div>
+      <ModeSegmented promptMode={promptMode} onPromptModeChange={onPromptModeChange} />
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={onOpenCustomPrompt}
+        className="text-muted"
+      >
+        <SquarePen className="size-3.5" />
+        自定义
+      </Button>
+      <SubmitButton loading={loading} disabled={disabled} />
+    </form>
+  )
+}
+
+function ModeSegmented({
+  promptMode,
+  onPromptModeChange
+}: {
+  promptMode: PromptMode
+  onPromptModeChange: (mode: PromptMode) => void
+}) {
+  return (
+    <div className="inline-flex rounded-lg border border-hairline bg-surface-soft p-0.5">
+      {MODE_OPTIONS.map((option) => {
+        const Icon = option.icon
+        const active = promptMode === option.value
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onPromptModeChange(option.value)}
+            className={`inline-flex items-center gap-1.5 rounded-[7px] px-3 py-1 text-xs transition-colors ${
+              active
+                ? "bg-surface-cream-strong text-ink"
+                : "text-muted hover:text-ink"
+            }`}
+          >
+            <Icon className="size-3.5" />
+            {option.label}
+          </button>
+        )
+      })}
     </div>
+  )
+}
+
+function SubmitButton({ loading, disabled }: { loading: boolean; disabled: boolean }) {
+  return (
+    <Button
+      type="submit"
+      className="h-9 rounded-lg px-5"
+      disabled={disabled || loading}
+    >
+      {loading ? (
+        <>
+          <Loader2 className="size-4 animate-spin" />
+          生成中…
+        </>
+      ) : (
+        "生成"
+      )}
+    </Button>
   )
 }

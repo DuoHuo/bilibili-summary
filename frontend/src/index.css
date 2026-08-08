@@ -2,8 +2,8 @@
 @import "tw-animate-css";
 
 /* ============================================================================
- * DESIGN.md tokens — Anthropic warm-editorial palette
- * Cream canvas + coral primary + dark navy surfaces.
+ * DESIGN tokens — dark macOS glass palette
+ * Near-black canvas + coral primary + white-alpha layered surfaces.
  * ==========================================================================*/
 
 @theme {
@@ -19,31 +19,31 @@
   /* Brand */
   --color-primary: #cc785c;
   --color-primary-active: #a9583e;
-  --color-primary-disabled: #e6dfd8;
+  --color-primary-disabled: #3a3835;
 
-  /* Surfaces */
-  --color-canvas: #faf9f5;
-  --color-surface-soft: #f5f0e8;
-  --color-surface-card: #efe9de;
-  --color-surface-cream-strong: #e8e0d2;
-  --color-surface-dark: #181715;
-  --color-surface-dark-elevated: #252320;
-  --color-surface-dark-soft: #1f1e1b;
+  /* Surfaces — dark canvas + white-alpha glass layers */
+  --color-canvas: #131315;
+  --color-surface-soft: rgba(255, 255, 255, 0.05);
+  --color-surface-card: rgba(255, 255, 255, 0.08);
+  --color-surface-cream-strong: rgba(255, 255, 255, 0.12);
+  --color-surface-dark: #0b0b0c;
+  --color-surface-dark-elevated: #232326;
+  --color-surface-dark-soft: #1a1a1d;
 
-  /* Ink + text */
-  --color-ink: #141413;
-  --color-body: #3d3d3a;
-  --color-body-strong: #252523;
-  --color-muted: #6c6a64;
-  --color-muted-soft: #8e8b82;
+  /* Ink + text — light on dark */
+  --color-ink: #f4f2ed;
+  --color-body: #c9c7c2;
+  --color-body-strong: #e8e6e1;
+  --color-muted: #9b9994;
+  --color-muted-soft: #75736d;
 
-  /* Hairlines */
-  --color-hairline: #e6dfd8;
-  --color-hairline-soft: #ebe6df;
+  /* Hairlines — white alpha */
+  --color-hairline: rgba(255, 255, 255, 0.09);
+  --color-hairline-soft: rgba(255, 255, 255, 0.05);
 
   /* On-color */
   --color-on-primary: #ffffff;
-  --color-on-dark: #faf9f5;
+  --color-on-dark: #f4f2ed;
   --color-on-dark-soft: #a09d96;
 
   /* Accents */
@@ -51,7 +51,7 @@
   --color-accent-amber: #e8a55a;
   --color-success: #5db872;
   --color-warning: #d4a017;
-  --color-error: #c64545;
+  --color-error: #e06c6c;
 
   /* Radius scale */
   --radius-xs: 4px;
@@ -66,8 +66,8 @@
 }
 
 /* ============================================================================
- * shadcn bridge — map shadcn's expected CSS vars to DESIGN.md tokens.
- * Light mode is the only mode; the cream canvas IS the brand.
+ * shadcn bridge — map shadcn's expected CSS vars to DESIGN tokens.
+ * Dark glass is the only mode; the near-black canvas IS the brand.
  * ==========================================================================*/
 
 :root {
@@ -75,7 +75,7 @@
   --foreground: var(--color-ink);
   --card: var(--color-canvas);
   --card-foreground: var(--color-ink);
-  --popover: var(--color-canvas);
+  --popover: var(--color-surface-dark-elevated);
   --popover-foreground: var(--color-ink);
   --primary: var(--color-primary);
   --primary-foreground: var(--color-on-primary);
@@ -115,8 +115,45 @@
   }
 
   ::selection {
-    background-color: color-mix(in srgb, var(--color-primary) 22%, transparent);
+    background-color: color-mix(in srgb, var(--color-primary) 35%, transparent);
     color: var(--color-ink);
+  }
+}
+
+/* ============================================================================
+ * Glass primitives — layered translucent surfaces over the ambient canvas.
+ * Borders stay hairline (white alpha); blur refracts the ambient glows.
+ * ==========================================================================*/
+
+@layer components {
+  .glass {
+    background: color-mix(in srgb, #ffffff 4%, transparent);
+    backdrop-filter: blur(20px) saturate(150%);
+    -webkit-backdrop-filter: blur(20px) saturate(150%);
+  }
+
+  .glass-strong {
+    background: color-mix(in srgb, #ffffff 6%, transparent);
+    backdrop-filter: blur(28px) saturate(160%);
+    -webkit-backdrop-filter: blur(28px) saturate(160%);
+  }
+
+  .ambient-bg {
+    background:
+      radial-gradient(
+        1100px 700px at 85% -10%,
+        color-mix(in srgb, var(--color-primary) 13%, transparent),
+        transparent 62%
+      ),
+      radial-gradient(
+        900px 650px at -10% 110%,
+        color-mix(in srgb, var(--color-accent-teal) 9%, transparent),
+        transparent 60%
+      );
+  }
+
+  .card-shadow {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
   }
 }
 
@@ -165,7 +202,7 @@
 }
 
 /* ============================================================================
- * Markdown render — result body styled as "letter-paper" editorial column.
+ * Markdown render — result body styled as glass editorial column.
  * ==========================================================================*/
 
 @layer components {
@@ -231,6 +268,7 @@
   .prosemic pre {
     background: var(--color-surface-dark);
     color: var(--color-on-dark);
+    border: 1px solid var(--color-hairline-soft);
     border-radius: var(--radius-lg);
     padding: 1em 1.2em;
     overflow-x: auto;
@@ -267,5 +305,6 @@
   .prosemic th {
     background: var(--color-surface-soft);
     font-weight: 500;
+    color: var(--color-ink);
   }
 }

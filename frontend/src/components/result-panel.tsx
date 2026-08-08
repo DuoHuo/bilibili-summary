@@ -152,7 +152,7 @@ export function ResultPanel({
           {mode === "timestamp" && (
             <TabsContent value="transcript">
               {transcript ? (
-                <pre className="overflow-x-auto rounded-lg bg-surface-dark p-5 font-mono text-[13px] leading-relaxed text-on-dark">
+                <pre className="overflow-x-auto rounded-lg border border-hairline-soft bg-surface-dark p-5 font-mono text-[13px] leading-relaxed text-on-dark">
                   {transcript}
                 </pre>
               ) : (
@@ -162,7 +162,7 @@ export function ResultPanel({
           )}
 
           <TabsContent value="raw">
-            <pre className="overflow-x-auto rounded-lg bg-surface-soft p-5 font-mono text-[13px] leading-relaxed text-body">
+            <pre className="overflow-x-auto rounded-lg border border-hairline-soft bg-surface-soft p-5 font-mono text-[13px] leading-relaxed text-body">
               {result.markdown}
             </pre>
           </TabsContent>
@@ -180,8 +180,8 @@ export function ResultPanel({
 
 function Frame({ children }: { children: React.ReactNode }) {
   return (
-    <section className="mx-auto w-full max-w-[1200px]">
-      <div className="rounded-lg border border-hairline bg-canvas p-5">
+    <section className="w-full">
+      <div className="glass card-shadow rounded-2xl border border-hairline p-6">
         {children}
       </div>
     </section>
