@@ -1,8 +1,8 @@
-# Video Summary Architecture
+# bilibili summary Architecture
 
 ## 总览
 
-Video Summary 是一个 **Tauri 2 桌面应用**（单窗口）：核心业务逻辑全部 TypeScript（`frontend/src/core/`），Rust 仅保留极薄系统能力壳（`src-tauri/`）。用户输入 B 站或 YouTube 链接，应用完成字幕获取/Whisper 转写、调用大模型生成摘要与 Markdown/HTML 产物。
+bilibili summary 是一个 **Tauri 2 桌面应用**（单窗口）：核心业务逻辑全部 TypeScript（`frontend/src/core/`），Rust 仅保留极薄系统能力壳（`src-tauri/`）。用户输入 B 站或 YouTube 链接，应用完成字幕获取/Whisper 转写、调用大模型生成摘要与 Markdown/HTML 产物。
 
 ## 核心流程
 

@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# start.sh — 启动 Tauri 桌面应用（等价 make dev）。
+# start.sh — 启动 Tauri 桌面应用（等价 pnpm dev）。
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-FRONTEND_DIR="$ROOT_DIR/frontend"
 
 require_cmd() {
   local cmd="$1"
@@ -15,18 +14,13 @@ require_cmd() {
 
 require_cmd pnpm
 
-if [ ! -d "$FRONTEND_DIR" ]; then
-  echo "❌ 未找到 frontend 目录: $FRONTEND_DIR"
-  exit 1
-fi
-
-if [ ! -f "$FRONTEND_DIR/node_modules/.bin/tauri" ]; then
-  echo "ℹ️  未找到 tauri CLI，先安装依赖…"
-  (cd "$FRONTEND_DIR" && pnpm install)
+if [ ! -d "$ROOT_DIR/frontend/node_modules" ]; then
+  echo "ℹ️  未安装依赖，先执行 pnpm install…"
+  (cd "$ROOT_DIR" && pnpm install)
 fi
 
 echo "✅ 启动 Tauri 桌面应用（首次编译 Rust 壳可能需要几分钟）"
 (
-  cd "$FRONTEND_DIR"
-  pnpm tauri dev
+  cd "$ROOT_DIR"
+  pnpm dev
 )

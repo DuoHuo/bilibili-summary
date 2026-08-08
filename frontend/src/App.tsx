@@ -15,6 +15,9 @@ import type { SummarizeResult, UserConfig } from "@/lib/types"
 import { stripMarkdownTitle } from "@/core/render/markdown"
 import { openPath, resolveOutputDir, saveFileDialog } from "@/lib/tauri"
 
+/** macOS Overlay 标题栏需为红绿灯按钮留出左侧空间 */
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent)
+
 function normalizeTranscriptSection(markdown: string) {
   const timestampPattern = /\[\d{2}:\d{2}(?:-\d{2}:\d{2})?\]/g
   const formatListBlock = (items: string[]) => `\n${items.join("\n")}\n`
@@ -243,12 +246,18 @@ function App() {
 
   return (
     <div className="flex h-screen flex-col bg-canvas">
-      {/* 顶部工具栏：紧凑，设置入口在此 */}
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-hairline px-4">
-        <div className="flex items-center gap-2">
+      {/* 顶部工具栏：可拖拽；macOS Overlay 模式下为红绿灯留出左侧空间 */}
+      <header
+        data-tauri-drag-region
+        className="flex h-12 shrink-0 select-none items-center justify-between border-b border-hairline bg-canvas/70 px-4 backdrop-blur-md"
+      >
+        <div
+          data-tauri-drag-region
+          className={`flex items-center gap-2 ${isMac ? "pl-[70px]" : ""}`}
+        >
           <SpikeMark className="size-4 text-ink" />
           <span className="font-serif text-base font-medium tracking-tight text-ink">
-            Video Summary
+            bilibili summary
           </span>
         </div>
         <Button
@@ -263,7 +272,7 @@ function App() {
       </header>
 
       {/* 输入区：紧凑，不再是大 hero */}
-      <div className="shrink-0 border-b border-hairline px-4 py-3">
+      <div className="shrink-0 border-b border-hairline bg-canvas px-4 py-3">
         <UrlForm
           url={url}
           onUrlChange={setUrl}
@@ -277,7 +286,7 @@ function App() {
       </div>
 
       {/* 结果区：占满剩余空间并内部滚动 */}
-      <main className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <main className="min-h-0 flex-1 overflow-y-auto bg-canvas px-4 py-4">
         <ResultPanel
           result={result}
           error={error}

@@ -10,7 +10,7 @@ export function renderMarkdownHtml(input: {
   subtitle: string | null
   stamp: string | null
 }): string {
-  const subtitle = input.subtitle ?? "东方简约信纸 · Video Summary"
+  const subtitle = input.subtitle ?? "东方简约信纸 · bilibili summary"
   const stamp = input.stamp ?? "摘要"
   const { title } = input
   const body = marked.parse(input.markdown, { gfm: true, breaks: false }) as string
@@ -19,7 +19,7 @@ export function renderMarkdownHtml(input: {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>${title} - Video Summary</title>
+    <title>${title} - bilibili summary</title>
     <link
       href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;600&display=swap"
       rel="stylesheet"

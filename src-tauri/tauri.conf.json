@@ -1,23 +1,25 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Video Summary",
+  "productName": "bilibili summary",
   "version": "0.1.0",
-  "identifier": "com.siriusx.video-summary",
+  "identifier": "com.siriusx.bilibili-summary",
   "build": {
     "frontendDist": "../frontend/dist",
     "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "pnpm --dir frontend dev",
-    "beforeBuildCommand": "pnpm --dir frontend build"
+    "beforeDevCommand": "pnpm --dir frontend exec vite",
+    "beforeBuildCommand": "pnpm --dir frontend exec tsc --noEmit && pnpm --dir frontend exec vite build"
   },
   "app": {
     "windows": [
       {
-        "title": "Video Summary",
+        "title": "bilibili summary",
         "width": 1100,
         "height": 760,
         "minWidth": 800,
         "minHeight": 600,
-        "center": true
+        "center": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ],
     "security": {

@@ -69,7 +69,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: "Video Summary ${{ github.ref_name }}"
+          releaseName: "bilibili summary ${{ github.ref_name }}"
           releaseBody: "B站 / YouTube 视频摘要桌面工具（Tauri 2 + TypeScript）。"
           releaseDraft: true
           args: ${{ matrix.args }}

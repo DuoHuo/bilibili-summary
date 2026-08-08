@@ -167,7 +167,7 @@ describe("runSummarize 字幕路径（B 站）", () => {
       return resp
     }
     const output = await runSummarize(baseInput(), env.deps)
-    expect(output.html).toContain("东方简约信纸 · Video Summary")
+    expect(output.html).toContain("东方简约信纸 · bilibili summary")
   })
 })
 

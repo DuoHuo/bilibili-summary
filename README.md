@@ -1,4 +1,4 @@
-# Video Summary
+# bilibili summary
 
 输入一条 B 站 / YouTube 链接，自动生成结构化视频摘要。**Tauri 2 桌面 GUI**：核心业务逻辑全部 TypeScript（`frontend/src/core/`），Rust 仅保留极薄系统能力壳（子进程 / 文件 / 对话框）。
 
@@ -22,7 +22,7 @@
 ## 目录结构
 
 ```
-video-summary/
+bilibili-summary/
 ├── frontend/                 # React + Vite + Tailwind + shadcn/ui
 │   └── src/
 │       ├── core/             # TS 核心层（纯逻辑，可单测，依赖注入）
@@ -42,7 +42,8 @@ video-summary/
 │   └── tauri.conf.json
 ├── scripts/fetch-binaries.sh # sidecar 二进制分发脚本（本地与 CI 共用）
 ├── .github/workflows/        # ci.yml（三平台检查）+ release.yml（三平台打包发布）
-├── Makefile                  # 顶层编排（推荐入口）
+├── package.json              # 根 workspace（pnpm dev / build / test / clean）
+├── pnpm-workspace.yaml       # workspace 配置（frontend）
 └── DESIGN.md                 # 设计系统规范
 ```
 
@@ -66,20 +67,21 @@ Whisper 模型（`ggml-base.bin`）首次转录时自动下载到应用数据目
 ### 启动（推荐）
 
 ```bash
-make install     # 首次：pnpm install
-make dev         # 打开桌面窗口（等价 pnpm tauri dev）
+pnpm install   # 首次：安装全部依赖（含 tauri CLI）
+pnpm dev       # 打开桌面窗口
 ```
 
-### 常用 make 目标
+> `start.sh` 等价（自动检查依赖并启动）。
+
+### 常用命令（根目录执行）
 
 ```bash
-make help             # 列出全部目标
-make install          # 安装前端依赖
-make dev              # Tauri 开发模式（打开窗口）
-make build            # 打包（tauri build，生成安装包）
-make test             # vitest 单元测试
-make check            # tsc --noEmit + cargo check
-make fetch-binaries   # 拉取 sidecar 二进制（打包前调用）
+pnpm dev             # 启动桌面应用（tauri dev）
+pnpm build           # 打包生成安装包（tauri build）
+pnpm test            # vitest 单元测试
+pnpm check           # tsc --noEmit + cargo check
+pnpm run clean        # 清理构建产物（frontend/dist + src-tauri/target）
+pnpm fetch-binaries  # 拉取 sidecar 二进制（打包前调用）
 ```
 
 ## 使用流程

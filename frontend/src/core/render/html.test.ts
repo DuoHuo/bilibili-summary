@@ -19,7 +19,7 @@ describe("renderMarkdownHtml golden", () => {
     const html = renderMarkdownHtml({
       title: "测试视频",
       markdown: SAMPLE_MD,
-      subtitle: "东方简约信纸 · Video Summary",
+      subtitle: "东方简约信纸 · bilibili summary",
       stamp: "摘要"
     })
     expect(normalizeWhitespace(html)).toBe(normalizeWhitespace(golden))

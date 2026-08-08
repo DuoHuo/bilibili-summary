@@ -1,11 +1,11 @@
 [package]
-name = "video-summary"
+name = "bilibili-summary"
 version = "0.1.0"
 description = "B站 / YouTube 视频摘要桌面工具"
 edition = "2021"
 
 [lib]
-name = "video_summary_lib"
+name = "bilibili_summary_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
