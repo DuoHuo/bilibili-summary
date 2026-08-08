@@ -107,3 +107,9 @@ export async function openPath(path: string): Promise<void> {
   const { openPath: open } = await import("@tauri-apps/plugin-opener")
   await open(path)
 }
+
+/** 用系统默认浏览器打开 URL（走 opener 的 URL scope）。 */
+export async function openUrl(url: string): Promise<void> {
+  const { openUrl: open } = await import("@tauri-apps/plugin-opener")
+  await open(url)
+}

@@ -90,7 +90,9 @@ export const LEGACY_PROMPT = `你是一位擅长整理视频的助手。请根�
 - 全部使用简体中文
 `
 
-export const TIMESTAMP_CHUNK_SIZE = 50
+/** timestamp 分块校对参数：每块行数与每批并行块数（批间串行，控制瞬时并发）。 */
+export const TIMESTAMP_CHUNK_SIZE = 10
+export const TIMESTAMP_BATCH_CONCURRENCY = 3
 
 /**
  * timestamp 分块校对 prompt：只含本块编号行，避免长字幕一次送入（超时/超 context）。

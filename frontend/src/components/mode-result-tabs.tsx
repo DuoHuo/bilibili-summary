@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { convertFileSrc } from "@tauri-apps/api/core"
 import { Loader2, Pencil, RefreshCw, XCircle } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -43,7 +44,7 @@ export function ModeResultTabs({
 
   const entry = session.modes[activeMode]
 
-  // active 模式完成后从磁盘读回产物
+  // active 模式完成后从磁盘读回产物（截图相对路径 → asset 绝对路径，供预览加载）
   useEffect(() => {
     if (entry?.status !== "done") {
       setMarkdown(null)
@@ -52,7 +53,12 @@ export function ModeResultTabs({
     let active = true
     const load = async () => {
       const md = (await readModeOutput(session, activeMode)) ?? ""
-      if (active) setMarkdown(md)
+      const withAbsImages = md.replace(
+        /!\[([^\]]*)\]\(images\/([^)]+)\)/g,
+        (_m, alt: string, file: string) =>
+          `![${alt}](${convertFileSrc(`${session.outputDir}/images/${file}`)})`
+      )
+      if (active) setMarkdown(withAbsImages)
     }
     void load()
     return () => {
@@ -90,9 +96,9 @@ export function ModeResultTabs({
     [result, session.title]
   )
 
-  // 在浏览器打开原视频网页
+  // 用系统默认浏览器打开原视频网页
   const handleOpenOriginal = useCallback(() => {
-    void import("@/lib/tauri").then(({ openPath }) => openPath(session.url))
+    void import("@/lib/tauri").then(({ openUrl }) => openUrl(session.url))
   }, [session.url])
 
   const handleOpenOutput = useCallback(() => {

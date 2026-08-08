@@ -16,7 +16,7 @@ import { fetchYoutubeSubtitles, fetchYoutubeTitle } from "../subtitle/youtube"
 import { formatTranscriptWithTimestamps } from "../transcript/format"
 import { mergeTranscriptSegments, TIMESTAMP_MERGE_THRESHOLD_SECS } from "../transcript/merge"
 import { buildPrompt } from "../llm/prompt"
-import { buildTimestampChunkPrompt, TIMESTAMP_CHUNK_SIZE } from "@/lib/prompts"
+import { buildTimestampChunkPrompt, TIMESTAMP_CHUNK_SIZE, TIMESTAMP_BATCH_CONCURRENCY } from "@/lib/prompts"
 import { callLlm } from "../llm/client"
 import { transcribeWithWhisper } from "../whisper"
 import { downloadVideoWithYtdlp } from "../whisper/download"
@@ -148,21 +148,33 @@ export async function generateMode(req: GenerateRequest, deps: SummarizeDeps): P
     const lines = req.transcript.segments.map((s) => s.text)
     const correctedByIndex = new Map<number, string>()
     const CHUNK = TIMESTAMP_CHUNK_SIZE
-    for (let i = 0; i < lines.length; i += CHUNK) {
-      const chunkLines = lines.slice(i, i + CHUNK)
-      scopedDeps.onProgress?.("llm", `正在校对字幕 ${Math.min(i + CHUNK, lines.length)}/${lines.length} 行`)
-      const numbered = chunkLines.map((text, idx) => `${i + idx + 1}. ${text}`).join("\n")
-      const chunkPrompt = buildTimestampChunkPrompt(req.title, numbered)
-      const raw = await callLlm(scopedDeps.http, req.api_key, req.model, req.base_url, chunkPrompt, CHUNK * 48 + 256)
-      for (const line of raw.split("\n")) {
-        const m = /^\s*(\d+)[.、]\s*(.*)$/.exec(line)
-        if (m) {
-          const idx = parseInt(m[1], 10) - 1
-          if (idx >= 0 && idx < lines.length && m[2].trim() !== "") {
-            correctedByIndex.set(idx, m[2].trim())
-          }
-        }
+    const CONCURRENCY = TIMESTAMP_BATCH_CONCURRENCY
+    for (let batchStart = 0; batchStart < lines.length; batchStart += CHUNK * CONCURRENCY) {
+      // 本批最多 CONCURRENCY 块并行提交（10 行/块 × 3 并发），批间串行避免瞬时并发过高
+      const batch: Array<Promise<void>> = []
+      for (let b = 0; b < CONCURRENCY && batchStart + b * CHUNK < lines.length; b++) {
+        const chunkStart = batchStart + b * CHUNK
+        const chunkLines = lines.slice(chunkStart, chunkStart + CHUNK)
+        batch.push(
+          (async () => {
+            const numbered = chunkLines.map((text, idx) => `${chunkStart + idx + 1}. ${text}`).join("\n")
+            const chunkPrompt = buildTimestampChunkPrompt(req.title, numbered)
+            const raw = await callLlm(scopedDeps.http, req.api_key, req.model, req.base_url, chunkPrompt, CHUNK * 48 + 256)
+            for (const line of raw.split("\n")) {
+              const m = /^\s*(\d+)[.、]\s*(.*)$/.exec(line)
+              if (m) {
+                const idx = parseInt(m[1], 10) - 1
+                if (idx >= 0 && idx < lines.length && m[2].trim() !== "") {
+                  correctedByIndex.set(idx, m[2].trim())
+                }
+              }
+            }
+          })()
+        )
       }
+      await Promise.all(batch)
+      const doneLines = Math.min(batchStart + batch.length * CHUNK, lines.length)
+      scopedDeps.onProgress?.("llm", `正在校对字幕 ${doneLines}/${lines.length} 行`)
     }
     const correctedLines = lines.map((text, idx) => correctedByIndex.get(idx) ?? text)
     const correctedSegments = req.transcript.segments.map((seg, index) => ({

@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/tabs"
 import type { PromptMode } from "@/lib/prompts"
 import type { SummarizeResult, TranscriptSource } from "@/lib/types"
+import { openUrl } from "@/lib/tauri"
 
 interface ResultPanelProps {
   result: SummarizeResult | null
@@ -136,7 +137,24 @@ export function ResultPanel({
 
           <TabsContent value="markdown">
             <article className="prosemic">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  // 预览中的链接：用系统默认浏览器打开，不在 WebView 内导航
+                  a: ({ href, children, ...props }) => (
+                    <a
+                      {...props}
+                      href={href}
+                      onClick={(event) => {
+                        event.preventDefault()
+                        if (href && /^https?:\/\//.test(href)) void openUrl(href)
+                      }}
+                    >
+                      {children}
+                    </a>
+                  )
+                }}
+              >
                 {normalizedMarkdown || result.markdown}
               </ReactMarkdown>
             </article>

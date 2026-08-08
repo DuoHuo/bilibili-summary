@@ -33,6 +33,8 @@ interface FakeEnv {
   writes: Array<{ path: string; content: string }>
   stages: string[]
   hasSubtitle?: boolean
+  /** 按调用序号覆盖 /chat/completions 返回内容（用于多块分批测试） */
+  chatReplies?: string[]
 }
 
 function makeEnv(overrides: Partial<FakeEnv> = {}): FakeEnv {
@@ -59,6 +61,8 @@ function makeEnv(overrides: Partial<FakeEnv> = {}): FakeEnv {
     if (url.includes("hdslb.com")) return jsonResponse(fixture("bilibili-subtitle-body.json"))
     if (url.includes("/chat/completions")) {
       llmCall++
+      const reply = overrides.chatReplies?.[llmCall - 1]
+      if (reply !== undefined) return jsonResponse({ choices: [{ message: { content: reply } }] })
       if (llmCall === 1) return jsonResponse({ choices: [{ message: { content: MAIN_SUMMARY } }] })
       return jsonResponse({ choices: [{ message: { content: LABELS_JSON } }] })
     }
@@ -207,5 +211,32 @@ describe("generateMode（按模式懒生成）", () => {
     const output = await generateMode(generateInput({ mode: "timestamp" }), env.deps)
     expect(output.summary).toMatch(/^\[00:0\d-00:0\d\] /)
     expect(output.transcript_segments).toBeDefined()
+  })
+
+  it("timestamp 模式：35 行分 4 块（10 行/块 × 3 并发，两批）并行校对并回填修正", async () => {
+    const lineCount = 35
+    const segments = Array.from({ length: lineCount }, (_, i) => ({
+      start: i * 3,
+      end: i * 3 + 3,
+      text: `原句${i + 1}`
+    }))
+    // 4 块：批 1 三块并行 + 批 2 一块
+    const replies = Array.from({ length: Math.ceil(lineCount / 10) }, (_, block) => {
+      const start = block * 10
+      return Array.from({ length: Math.min(10, lineCount - start) }, (_, j) => `${start + j + 1}. 修正${start + j + 1}`).join("\n")
+    })
+    const env = makeEnv({ chatReplies: replies })
+    const output = await generateMode(
+      generateInput({ mode: "timestamp", transcript: { text: "", segments, source: "subtitle" } }),
+      env.deps
+    )
+    // 每块恰好一次 LLM 调用（共 4 块）
+    expect(env.httpCalls.filter((u) => u.includes("/chat/completions"))).toHaveLength(4)
+    // 修正按行号回填：首行与末行都来自 LLM，而非原字幕
+    expect(output.summary).toContain("修正1")
+    expect(output.summary).toContain(`修正${lineCount}`)
+    expect(output.summary).not.toContain("原句1")
+    // 合并后按 15s 阈值合块：每段 3s → 每 4 段一块（第 5 段 end-start=15 恰好不合并）→ 35 段 = 9 块
+    expect(output.transcript_segments).toHaveLength(9)
   })
 })

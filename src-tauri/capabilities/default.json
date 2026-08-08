@@ -16,9 +16,14 @@
     },
     "store:default",
     "dialog:default",
+  "opener:default",
     {
       "identifier": "opener:default",
-      "allow": [{ "path": "$APPDATA/**" }]
+      "allow": [
+        { "path": "$APPDATA/**" },
+        { "url": "https://**" },
+        { "url": "http://**" }
+      ]
     },
     "opener:allow-open-path"
   ]
