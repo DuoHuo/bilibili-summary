@@ -1,11 +1,14 @@
 import type { HttpFetch, Transcript, TranscriptSegment } from "../types"
 import { formatTranscriptWithTimestamps } from "../transcript/format"
 
-/** B 站 API 常用请求头（对齐 Rust reqwest 的行为，并提高成功率） */
+/** B 站 API 常用请求头（对齐 Rust reqwest 的行为，并提高成功率）。
+ * Origin 必须显式声明：plugin-http 默认注入 `Origin: tauri://localhost`，
+ * B 站 passport/API 风控会对非 B 站 Origin 返回 HTTP 403。 */
 export const BILI_HEADERS: Record<string, string> = {
   "User-Agent":
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
-  Referer: "https://www.bilibili.com/"
+  Referer: "https://www.bilibili.com/",
+  Origin: "https://www.bilibili.com"
 }
 
 interface BiliViewResponse {

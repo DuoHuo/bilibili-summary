@@ -58,7 +58,8 @@ export async function transcribeWithWhisper(
   language: "zh-cn" | "en",
   resourcesDir: string
 ): Promise<Transcript> {
-  const wavPath = await downloadAudioWithYtdlp(deps, url, cookie, resourcesDir)
+  // resourcesDir 即音频缓存目录：命中复用，未命中下载后自然入缓存。
+  const wavPath = await downloadAudioWithYtdlp(deps, url, cookie, resourcesDir, resourcesDir)
   const modelPath = await deps.resolveModelPath()
   const segments = await transcribeWithWhisperCli(
     deps,

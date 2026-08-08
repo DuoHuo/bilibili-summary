@@ -37,6 +37,21 @@ describe("downloadAudioWithYtdlp", () => {
     expect(calls[0].args[calls[0].args.length - 1]).toBe("https://www.bilibili.com/video/BV1xx411c7mD")
   })
 
+  it("缓存命中：cacheDir 已有同名 wav 时跳过下载", async () => {
+    const { deps, calls } = makeDeps({
+      isFile: async (path) => path === "/tmp/cache/BV1xx411c7mD.wav"
+    })
+    const path = await downloadAudioWithYtdlp(
+      deps,
+      "https://www.bilibili.com/video/BV1xx411c7mD",
+      null,
+      "/tmp/r",
+      "/tmp/cache"
+    )
+    expect(path).toBe("/tmp/cache/BV1xx411c7mD.wav")
+    expect(calls).toHaveLength(0) // 未调用 yt-dlp
+  })
+
   it("cookie 串写入 cookies.txt 并传 --cookies", async () => {
     const writes: Array<[string, string]> = []
     const { deps, calls } = makeDeps({

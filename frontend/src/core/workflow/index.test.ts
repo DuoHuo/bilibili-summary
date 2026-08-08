@@ -44,6 +44,9 @@ function makeEnv(overrides: Partial<FakeEnv> = {}): FakeEnv {
     ...overrides
   }
 
+  // 模拟文件系统：wav 首次检查（前置缓存命中）为 false，下载后存在为 true。
+  const wavSeen = new Set<string>()
+
   let llmCall = 0
   const http: HttpFetch = async (url) => {
     env.httpCalls.push(url)
@@ -85,9 +88,17 @@ function makeEnv(overrides: Partial<FakeEnv> = {}): FakeEnv {
     onProgress: (stage) => env.stages.push(stage),
     resolveModelPath: async () => "/models/base.bin",
     resolveOutputDir: async (runId) => `/tmp/out/${runId}`,
+    resolveCacheDir: async () => "/tmp/cache/audio",
     writeFile: async (path, content) => env.writes.push({ path, content }),
     readFile: async (path) => env.writes.find((w) => w.path === path)?.content ?? "{}",
-    isFile: async (path) => path.endsWith(".wav") || path.endsWith(".mp4"),
+    isFile: async (path) => {
+      if (path.endsWith(".wav")) {
+        if (wavSeen.has(path)) return true
+        wavSeen.add(path)
+        return false
+      }
+      return path.endsWith(".mp4")
+    },
     now: () => new Date(2026, 7, 8, 12, 34, 56)
   }
   return env

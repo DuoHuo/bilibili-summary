@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "frontend 层规范入口，实施前必读"}
+{"file": ".trellis/spec/frontend/core-guidelines.md", "reason": "core/auth 纯函数层编码规范"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "isUserConfig guard 扩展与 BiliProfile 类型设计"}

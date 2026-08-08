@@ -10,21 +10,23 @@ import {
 import { toast, Toaster } from "sonner"
 
 import { CustomPromptDialog } from "@/components/custom-prompt-dialog"
+import { LoginDialog } from "@/components/login-dialog"
 import { ResultPanel } from "@/components/result-panel"
+import { SessionList } from "@/components/session-list"
 import { SettingsView } from "@/components/settings-panel"
 import { SpikeMark } from "@/components/spike-mark"
 import { UrlForm } from "@/components/url-form"
-import { postSummarize, SummarizeError, type SummarizePayload } from "@/lib/api"
 import { loadConfig, saveConfig } from "@/lib/config"
-import { LEGACY_PROMPT, resolvePrompt, type PromptMode } from "@/lib/prompts"
-import type { SummarizeResult, UserConfig } from "@/lib/types"
+import { fetchNavInfo, logoutBili } from "@/lib/biliAuth"
+import { LEGACY_PROMPT, type PromptMode } from "@/lib/prompts"
+import type { BiliProfile, SummarizeResult, UserConfig } from "@/lib/types"
+import { readSessionOutput, useSessionManager } from "@/lib/sessions"
 import { stripMarkdownTitle } from "@/core/render/markdown"
-import { openPath, resolveOutputDir, saveFileDialog } from "@/lib/tauri"
+import { openPath, saveFileDialog, tauriHttpFetch } from "@/lib/tauri"
 
 /** macOS Overlay 标题栏需为红绿灯按钮留出左侧空间 */
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent)
-
-type View = "home" | "settings"
+type View = "home" | "settings" | "session"
 
 const MODE_CARDS: ReadonlyArray<{
   value: PromptMode
@@ -145,7 +147,8 @@ const DEFAULT_CONFIG: UserConfig = {
   promptMode: "summary",
   cookie: "",
   sttLanguage: "zh-cn",
-  screenshot: false
+  screenshot: false,
+  biliProfile: null
 }
 
 function App() {
@@ -154,9 +157,13 @@ function App() {
   const [config, setConfig] = useState<UserConfig>(DEFAULT_CONFIG)
   const [configReady, setConfigReady] = useState(false)
   const [customPromptOpen, setCustomPromptOpen] = useState(false)
-  const [result, setResult] = useState<SummarizeResult | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
+  const [loginOpen, setLoginOpen] = useState(false)
+  const [activeRunId, setActiveRunId] = useState<string | null>(null)
+  const [activeResult, setActiveResult] = useState<SummarizeResult | null>(null)
+  const { sessions, start, cancel, remove, rerun } = useSessionManager({ config })
+
+  const activeSession =
+    activeRunId ? (sessions.find((s) => s.run_id === activeRunId) ?? null) : null
 
   // Load persisted config once.
   useEffect(() => {
@@ -185,7 +192,7 @@ function App() {
   useEffect(() => {
     if (!import.meta.env.DEV) return
     if (!new URLSearchParams(window.location.search).has("qa")) return
-    setResult({
+    setActiveResult({
       run_id: "qa00000001",
       title: "【示例】B站视频标题：TypeScript 与 Tauri 入门",
       summary: "示例",
@@ -217,104 +224,171 @@ function App() {
       ],
       transcript_source: "subtitle"
     })
+    setView("session")
   }, [])
 
   const patchConfig = useCallback((patch: Partial<UserConfig>) => {
     setConfig((prev) => ({ ...prev, ...patch }))
   }, [])
 
+  // B 站扫码登录成功：持久化用户信息 + Cookie
+  const handleLoginSuccess = useCallback(
+    (profile: BiliProfile, cookie: string) => {
+      patchConfig({ biliProfile: profile, cookie })
+      toast.success("已登录 B 站账号", { description: `@${profile.name}` })
+    },
+    [patchConfig]
+  )
+
+  // 退出登录：服务端会话失效尽力而为，本地必清
+  const handleLogout = useCallback(async () => {
+    const cookie = config.cookie
+    patchConfig({ biliProfile: null, cookie: "" })
+    if (cookie) await logoutBili(tauriHttpFetch, cookie)
+    toast.success("已退出登录")
+  }, [config.cookie, patchConfig])
+
+  // 启动懒校验：仅当 B 站明确判定过期（-101）时清除登录态；服务异常保留 Cookie 供下次重试
+  useEffect(() => {
+    if (!configReady) return
+    if (!config.cookie.trim()) return
+    let active = true
+    fetchNavInfo(tauriHttpFetch, config.cookie)
+      .then((state) => {
+        if (!active) return
+        if (state.status === "expired") {
+          patchConfig({ biliProfile: null, cookie: "" })
+          toast.error("B 站登录已过期，请重新登录")
+        } else if (state.status === "active" && state.profile && !config.biliProfile) {
+          // 登录态有效但本地缺档案：补全（如历史版本升级）
+          patchConfig({ biliProfile: state.profile })
+        }
+        // serviceError：网络/服务异常，保留 Cookie 不打扰
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [configReady, config.cookie, config.biliProfile, patchConfig])
+
   const normalizedMarkdown = useMemo(
     () =>
-      result
-        ? normalizeTranscriptSection(stripMarkdownTitle(result.markdown))
+      activeResult
+        ? normalizeTranscriptSection(stripMarkdownTitle(activeResult.markdown))
         : "",
-    [result]
+    [activeResult]
   )
 
   const handleSubmit = useCallback(async () => {
-    setError("")
-    setResult(null)
-
     if (!url.trim()) {
-      setError("请输入视频链接")
+      toast.error("请输入视频链接")
       return
     }
     if (!config.apiKey.trim()) {
-      setError("请先在「设置」中填入 API Key")
+      toast.error("请先在「设置」中填入 API Key")
       setView("settings")
       return
     }
 
-    const payload: SummarizePayload = {
-      url: url.trim(),
-      api_key: config.apiKey.trim(),
-      model: config.model.trim() || null,
-      base_url: config.baseUrl.trim() || null,
-      prompt: resolvePrompt(config.promptMode, config.prompt) || null,
-      cookie: config.cookie.trim() || null,
-      stt_language: config.sttLanguage,
-      screenshot: config.screenshot,
-      mode: config.promptMode
+    const runId = await start(url.trim())
+    if (runId) {
+      setActiveRunId(runId)
+      setView("session")
     }
+  }, [config, url, start])
 
-    setLoading(true)
-    try {
-      const data = await postSummarize("", payload)
-      setResult(data)
-      toast.success("摘要生成完成", {
-        description: data.title || undefined
-      })
-    } catch (err) {
-      const message =
-        err instanceof SummarizeError || err instanceof Error
-          ? err.message
-          : "请求失败"
-      setError(message)
-      toast.error("生成失败", { description: message })
-    } finally {
-      setLoading(false)
+  // 切换 active session：从磁盘读回产物。
+  useEffect(() => {
+    let active = true
+    // 未选择 session（含 QA 注入场景）时不干预 activeResult。
+    if (!activeRunId) return
+    if (!activeSession) {
+      setActiveResult(null)
+      return
     }
-  }, [config, url])
+    if (activeSession.status !== "done") {
+      setActiveResult(null)
+      return
+    }
+    readSessionOutput(activeSession)
+      .then((result) => {
+        if (active) setActiveResult(result)
+      })
+      .catch(() => {
+        if (active) setActiveResult(null)
+      })
+    return () => {
+      active = false
+    }
+  }, [activeRunId, activeSession])
+
+  const handleSelectSession = useCallback((runId: string) => {
+    setActiveRunId(runId)
+    setView("session")
+  }, [])
+
+  const handleCancelSession = useCallback(
+    (runId: string) => {
+      void cancel(runId)
+    },
+    [cancel]
+  )
+
+  const handleRemoveSession = useCallback(
+    (runId: string) => {
+      if (runId === activeRunId) {
+        setActiveRunId(null)
+        setView("home")
+      }
+      void remove(runId)
+    },
+    [activeRunId, remove]
+  )
+
+  const handleRerunSession = useCallback(
+    (runId: string) => {
+      void rerun(runId)
+    },
+    [rerun]
+  )
 
   const handleCopyMarkdown = useCallback(async () => {
-    if (!result) return
+    if (!activeResult) return
     await navigator.clipboard.writeText(
-      normalizedMarkdown || result.markdown
+      normalizedMarkdown || activeResult.markdown
     )
     toast.success("已复制 Markdown 到剪贴板")
-  }, [normalizedMarkdown, result])
+  }, [normalizedMarkdown, activeResult])
 
   const handleDownload = useCallback(
     async (kind: "markdown" | "html") => {
-      if (!result) return
+      if (!activeResult) return
       const isMarkdown = kind === "markdown"
-      const content = isMarkdown ? result.markdown : result.html
+      const content = isMarkdown ? activeResult.markdown : activeResult.html
       const ext = isMarkdown ? "md" : "html"
-      const saved = await saveFileDialog(`${result.title || "bilibili"}.${ext}`, content)
+      const saved = await saveFileDialog(`${activeResult.title || "bilibili"}.${ext}`, content)
       if (saved) {
         toast.success(`已保存 .${ext}`)
       }
     },
-    [result]
+    [activeResult]
   )
 
   const handleOpenOutput = useCallback(async () => {
-    if (!result?.run_id) return
-    const dir = await resolveOutputDir(result.run_id)
-    await openPath(dir)
-  }, [result])
+    if (!activeSession?.outputDir) return
+    await openPath(activeSession.outputDir)
+  }, [activeSession])
 
   const handleCopyOutput = useCallback(async () => {
-    if (!result?.run_id) return
-    const dir = await resolveOutputDir(result.run_id)
-    await navigator.clipboard.writeText(dir)
+    if (!activeSession?.outputDir) return
+    await navigator.clipboard.writeText(activeSession.outputDir)
     toast.success("已复制产物目录路径")
-  }, [result])
+  }, [activeSession])
 
   const handleNewSummary = useCallback(() => {
     setView("home")
-    setResult(null)
-    setError("")
+    setActiveRunId(null)
+    setActiveResult(null)
   }, [])
 
   const handleModeCard = useCallback(
@@ -327,8 +401,6 @@ function App() {
     },
     [patchConfig]
   )
-
-  const resultPhase = loading || result !== null || error !== ""
 
   return (
     <div className="relative flex h-screen bg-canvas text-ink">
@@ -363,7 +435,17 @@ function App() {
           />
         </nav>
 
-        <div className="flex-1" />
+        {/* session 列表：运行中 + 历史平铺 */}
+        <div className="mt-2 flex min-h-0 flex-1 flex-col overflow-y-auto pb-2">
+          <SessionList
+            sessions={sessions}
+            activeRunId={activeRunId}
+            onSelect={handleSelectSession}
+            onCancel={handleCancelSession}
+            onRemove={handleRemoveSession}
+            onRerun={handleRerunSession}
+          />
+        </div>
 
         <div className="flex items-center gap-2 px-5 pb-5 text-xs text-muted-soft">
           <span className="size-1.5 rounded-full bg-success" />
@@ -377,8 +459,14 @@ function App() {
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {view === "settings" ? (
-            <SettingsView config={config} onChange={patchConfig} />
-          ) : resultPhase ? (
+            <SettingsView
+              config={config}
+              onChange={patchConfig}
+              profile={config.biliProfile}
+              onLogin={() => setLoginOpen(true)}
+              onLogout={() => void handleLogout()}
+            />
+          ) : (view === "session" && activeSession) || (view === "session" && activeResult) ? (
             <div className="mx-auto flex w-full max-w-[1000px] flex-col gap-4 px-6 pb-10">
               <div className="glass card-shadow rounded-2xl border border-hairline p-3">
                 <UrlForm
@@ -386,7 +474,7 @@ function App() {
                   url={url}
                   onUrlChange={setUrl}
                   onSubmit={handleSubmit}
-                  loading={loading}
+                  loading={activeSession?.status === "running"}
                   disabled={!url.trim() || !config.apiKey.trim()}
                   promptMode={config.promptMode}
                   onPromptModeChange={(mode) => patchConfig({ promptMode: mode })}
@@ -394,11 +482,11 @@ function App() {
                 />
               </div>
               <ResultPanel
-                result={result}
-                error={error}
-                loading={loading}
+                result={activeResult}
+                error={activeSession && (activeSession.status === "error" || activeSession.status === "cancelled") ? activeSession.error ?? (activeSession.status === "cancelled" ? "任务已取消" : "生成失败") : ""}
+                loading={activeSession?.status === "running"}
                 normalizedMarkdown={normalizedMarkdown}
-                mode={config.promptMode}
+                mode={activeSession?.mode ?? config.promptMode}
                 onCopyMarkdown={handleCopyMarkdown}
                 onDownloadMarkdown={() => handleDownload("markdown")}
                 onDownloadHtml={() => handleDownload("html")}
@@ -421,14 +509,13 @@ function App() {
                   url={url}
                   onUrlChange={setUrl}
                   onSubmit={handleSubmit}
-                  loading={loading}
+                  loading={false}
                   disabled={!url.trim() || !config.apiKey.trim()}
                   promptMode={config.promptMode}
                   onPromptModeChange={(mode) => patchConfig({ promptMode: mode })}
                   onOpenCustomPrompt={() => setCustomPromptOpen(true)}
                 />
               </div>
-
               <div className="mt-4 grid w-full gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {MODE_CARDS.map((card) => {
                   const Icon = card.icon
@@ -464,6 +551,13 @@ function App() {
         onOpenChange={setCustomPromptOpen}
         value={config.prompt}
         onSave={(value) => patchConfig({ prompt: value, promptMode: "custom" })}
+      />
+
+      <LoginDialog
+        open={loginOpen}
+        onOpenChange={setLoginOpen}
+        http={tauriHttpFetch}
+        onSuccess={handleLoginSuccess}
       />
 
       <Toaster />

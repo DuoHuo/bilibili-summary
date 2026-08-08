@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/frontend/core-guidelines.md", "reason": "检查 core 层改动（workflow/whisper）是否符合分层与依赖注入约束"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "session 存储层 runtime guard（isSessionMeta）与类型安全约定"}

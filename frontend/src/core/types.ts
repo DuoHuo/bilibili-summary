@@ -28,6 +28,8 @@ export interface SummarizeRequest {
   stt_language: "zh-cn" | "en"
   screenshot: boolean
   mode: PromptMode
+  /** 会话层预生成的 run_id；缺省时由 runSummarize 内部生成 */
+  run_id?: string
 }
 
 /** 摘要流水线最终产物（对齐旧 web 版响应体） */
@@ -84,6 +86,8 @@ export type ExternalRunner = (
     onLine?: (line: string) => void
     /** 进度事件阶段名（用于路由 summary://progress） */
     stage?: string
+    /** 任务标识（run_id）：透传给 run_external，供 kill/进度路由 */
+    id?: string
   }
 ) => Promise<ExternalRunResult>
 
@@ -93,6 +97,8 @@ export interface SummarizeDeps {
   onProgress?: (stage: Stage, detail?: string) => void
   resolveModelPath: () => Promise<string>
   resolveOutputDir: (runId: string) => Promise<string>
+  /** 音频缓存目录（whisper 兜底下载到此处并复用）；缺省时退化为 resourcesDir */
+  resolveCacheDir?: () => Promise<string>
   writeFile: (path: string, content: string) => Promise<void>
   readFile: (path: string) => Promise<string>
   isFile: (path: string) => Promise<boolean>

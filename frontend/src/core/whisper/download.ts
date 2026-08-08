@@ -30,14 +30,24 @@ async function resolveCookieArgs(
   return ["--cookies", cookiePath]
 }
 
-/** 用 yt-dlp 下载音频并转为 16k 单声道 wav。移植自 download_audio_with_ytdlp。 */
+/** 用 yt-dlp 下载音频并转为 16k 单声道 wav。移植自 download_audio_with_ytdlp。
+ * 若提供 cacheDir：`{cacheDir}/{key}.wav` 已存在则直接复用（跳过下载）。
+ * 未提供 cacheDir 时行为与旧版一致（兼容测试契约）。 */
 export async function downloadAudioWithYtdlp(
   deps: Pick<SummarizeDeps, "runner" | "isFile" | "writeFile" | "onProgress">,
   url: string,
   cookie: string | null,
-  outputDir: string
+  outputDir: string,
+  cacheDir?: string
 ): Promise<string> {
   const outputName = buildWhisperAudioName(url)
+  // 缓存命中：同一视频（同 key）的 wav 已存在，直接复用。
+  const cachePath = cacheDir ? `${cacheDir}/${outputName}.wav` : null
+  if (cachePath && (await deps.isFile(cachePath))) {
+    deps.onProgress?.("whisper", `复用缓存音频 ${outputName}.wav`)
+    return cachePath
+  }
+
   const outputTemplate = `${outputDir}/${outputName}.%(ext)s`
   const cookieArgs = await resolveCookieArgs(deps, url, cookie, outputDir)
 

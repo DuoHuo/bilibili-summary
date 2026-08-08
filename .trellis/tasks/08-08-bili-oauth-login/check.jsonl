@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "质量检查标准（lint/类型/测试）"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "校验 UserConfig guard 兼容性与类型安全"}

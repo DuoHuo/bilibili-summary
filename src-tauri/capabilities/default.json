@@ -5,7 +5,18 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "http:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://*.bilibili.com/*" },
+        { "url": "https://bilibili.com/*" },
+        { "url": "https://*.hdslb.com/*" },
+        { "url": "https://*.biligame.com/*" },
+        { "url": "https://*.youtube.com/*" },
+        { "url": "https://youtube.com/*" },
+        { "url": "https://video.google.com/*" }
+      ]
+    },
     "store:default",
     "dialog:default",
     "opener:default"

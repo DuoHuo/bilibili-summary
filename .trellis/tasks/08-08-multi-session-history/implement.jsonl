@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/frontend/core-guidelines.md", "reason": "core 层依赖注入/分层约定：SummarizeDeps 扩展 resolveCacheDir、runner 注入 id 均需遵守"}
+{"file": ".trellis/spec/frontend/design-tokens.md", "reason": "深色玻璃主题 token：session 列表色点/卡片需用既有 token 命名"}

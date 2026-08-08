@@ -5,6 +5,7 @@ import {
   ensureWhisperModel,
   pathIsFile,
   readTextFile,
+  resolveCacheDir,
   resolveOutputDir,
   tauriHttpFetch,
   tauriRunner,
@@ -21,6 +22,8 @@ export interface SummarizePayload {
   stt_language: "zh-cn" | "en"
   screenshot: boolean
   mode: PromptMode
+  /** 会话层预生成的 run_id（产物目录 + 进度路由） */
+  run_id?: string
 }
 
 export class SummarizeError extends Error {
@@ -38,7 +41,8 @@ export class SummarizeError extends Error {
  */
 export async function postSummarize(
   _apiBase: string,
-  payload: SummarizePayload
+  payload: SummarizePayload,
+  onProgress?: (stage: string, detail?: string) => void
 ): Promise<SummarizeResult> {
   try {
     const output = await runSummarize(
@@ -51,16 +55,19 @@ export async function postSummarize(
         cookie: payload.cookie,
         stt_language: payload.stt_language,
         screenshot: payload.screenshot,
-        mode: payload.mode
+        mode: payload.mode,
+        run_id: payload.run_id
       },
       {
         http: tauriHttpFetch,
         runner: tauriRunner,
         resolveModelPath: ensureWhisperModel,
         resolveOutputDir,
+        resolveCacheDir,
         writeFile: writeTextFile,
         readFile: readTextFile,
-        isFile: pathIsFile
+        isFile: pathIsFile,
+        onProgress
       }
     )
 

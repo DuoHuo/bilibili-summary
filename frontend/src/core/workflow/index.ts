@@ -104,45 +104,54 @@ export async function runSummarize(
   deps: SummarizeDeps
 ): Promise<SummarizeOutput> {
   const now = deps.now?.() ?? new Date()
-  const runId = generateRunId()
+  // 会话层可预生成 run_id（用于产物目录 + 进度路由）；缺省时内部生成。
+  const runId = input.run_id ?? generateRunId()
   const runDir = await deps.resolveOutputDir(runId)
+  // 包装依赖：所有外部进程调用携带本任务 run_id（供 kill 与进度事件路由）。
+  const scopedDeps: SummarizeDeps = {
+    ...deps,
+    runner: (program, args, options) =>
+      deps.runner(program, args, { ...options, id: runId })
+  }
   const mode = input.mode
 
   // 1. detect_platform
-  deps.onProgress?.("detect")
+  scopedDeps.onProgress?.("detect")
   const platform = detectPlatform(input.url)
 
   // 2. fetch_subtitle
-  deps.onProgress?.("fetch_subtitle")
+  scopedDeps.onProgress?.("fetch_subtitle")
   let title: string
   let transcript: Transcript | null
   if (platform === "bilibili") {
     const bvid = parseBilibiliId(input.url)
     if (!bvid) throw new Error("无效的 B 站链接")
-    const meta = await fetchBilibiliMeta(deps.http, bvid)
+    const meta = await fetchBilibiliMeta(scopedDeps.http, bvid)
     title = meta.title
-    transcript = await fetchBilibiliSubtitles(deps.http, bvid, meta.cid, input.cookie)
+    transcript = await fetchBilibiliSubtitles(scopedDeps.http, bvid, meta.cid, input.cookie)
   } else {
     const videoId = parseYoutubeId(input.url)
     if (!videoId) throw new Error("无效的 YouTube 链接")
-    title = await fetchYoutubeTitle(deps.http, input.url)
-    transcript = await fetchYoutubeSubtitles(deps.http, videoId)
+    title = await fetchYoutubeTitle(scopedDeps.http, input.url)
+    transcript = await fetchYoutubeSubtitles(scopedDeps.http, videoId)
   }
 
   // 3. whisper_transcribe（字幕缺失时兜底）
   if (!transcript) {
-    deps.onProgress?.("whisper")
+    scopedDeps.onProgress?.("whisper")
+    // 音频下载到集中缓存目录：同视频复用，避免重复下载。
+    const audioDir = (await scopedDeps.resolveCacheDir?.()) ?? `${runDir}/resources`
     transcript = await transcribeWithWhisper(
-      deps,
+      scopedDeps,
       input.url,
       input.cookie,
       input.stt_language,
-      `${runDir}/resources`
+      audioDir
     )
   }
 
   // 4. build_prompt
-  deps.onProgress?.("build_prompt")
+  scopedDeps.onProgress?.("build_prompt")
   const transcriptText =
     mode === "timestamp"
       ? transcript.segments.map((s) => s.text).join("\n")
@@ -156,8 +165,8 @@ export async function runSummarize(
   })
 
   // 5. call_llm
-  deps.onProgress?.("llm")
-  const rawSummary = await callLlm(deps.http, input.api_key, input.model, input.base_url, prompt)
+  scopedDeps.onProgress?.("llm")
+  const rawSummary = await callLlm(scopedDeps.http, input.api_key, input.model, input.base_url, prompt)
 
   let finalSegments: TranscriptSegment[] = transcript.segments
   let summaryText = rawSummary
@@ -180,7 +189,7 @@ export async function runSummarize(
   let htmlSubtitle: string | null = null
   let htmlStamp: string | null = null
   try {
-    const labels = await generateHtmlLabels(deps, input.api_key, input.model, input.base_url, title, rawSummary)
+    const labels = await generateHtmlLabels(scopedDeps, input.api_key, input.model, input.base_url, title, rawSummary)
     if (labels.subtitle.trim() !== "") htmlSubtitle = labels.subtitle
     if (labels.stamp.trim() !== "") htmlStamp = labels.stamp
   } catch {
@@ -188,7 +197,7 @@ export async function runSummarize(
   }
 
   // 6. render
-  deps.onProgress?.("render")
+  scopedDeps.onProgress?.("render")
   let markdown = buildOutputMarkdown({
     mode,
     title,
@@ -202,10 +211,10 @@ export async function runSummarize(
   if (input.screenshot) {
     const markers = extractScreenshotMarkers(markdown)
     if (markers.length > 0) {
-      const videoPath = await downloadVideoWithYtdlp(deps, input.url, input.cookie, `${runDir}/resources`)
+      const videoPath = await downloadVideoWithYtdlp(scopedDeps, input.url, input.cookie, `${runDir}/resources`)
       const screenshotDir = `${runDir}/screenshots`
       for (const [index, [marker, timestamp]] of markers.entries()) {
-        const imagePath = await generateScreenshot(deps, videoPath, screenshotDir, timestamp, index)
+        const imagePath = await generateScreenshot(scopedDeps, videoPath, screenshotDir, timestamp, index)
         const filename = imagePath.split("/").pop() ?? ""
         markdown = markdown.replace(marker, `![](${screenshotDir}/${filename})`)
       }
@@ -221,11 +230,11 @@ export async function runSummarize(
   })
 
   // 产物落盘
-  await deps.writeFile(`${runDir}/summary_${runId}.md`, markdown)
-  await deps.writeFile(`${runDir}/summary_${runId}.html`, html)
-  await deps.writeFile(`${runDir}/transcript_${runId}.txt`, transcript.text)
+  await scopedDeps.writeFile(`${runDir}/summary_${runId}.md`, markdown)
+  await scopedDeps.writeFile(`${runDir}/summary_${runId}.html`, html)
+  await scopedDeps.writeFile(`${runDir}/transcript_${runId}.txt`, transcript.text)
 
-  deps.onProgress?.("done")
+  scopedDeps.onProgress?.("done")
 
   return {
     run_id: runId,

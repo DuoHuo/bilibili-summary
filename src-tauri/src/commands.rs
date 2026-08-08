@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::sync::{LazyLock, Mutex};
 
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -10,6 +11,11 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 
 const PROGRESS_EVENT: &str = "summary://progress";
+
+/// 运行中外部进程注册表：run_external 传入 `id` 时登记，kill_external 据此终止。
+/// 仅支持单进程级取消（每个 id 一个子进程），进程结束后由 run_external 移除。
+static CHILDREN: LazyLock<Mutex<HashMap<String, std::sync::Arc<tokio::sync::Mutex<tokio::process::Child>>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// 目标三元组（用于 sidecar 命名），与 Tauri externalBin 约定一致。
 fn target_triple() -> String {
@@ -78,6 +84,8 @@ pub struct RunExternalRequest {
     env: Option<HashMap<String, String>>,
     /// 进度事件阶段名（如 whisper / render）
     stage: Option<String>,
+    /// 任务标识（run_id）：传入后登记进进程注册表，供 kill_external 终止；也随进度事件回传。
+    id: Option<String>,
 }
 
 /// 通用子进程执行：sidecar/PATH 解析 + stdout/stderr 逐行进度事件。
@@ -103,17 +111,26 @@ pub async fn run_external(
         .stderr(Stdio::piped())
         .stdin(Stdio::null());
 
-    let mut child = command
+    let child = command
         .spawn()
         .map_err(|e| format!("调用 {} 失败，请确认已安装: {e}", req.program))?;
+
+    // 共享句柄：run_external 与 kill_external 通过同一把锁串行访问，避免双重 wait。
+    let child_arc = std::sync::Arc::new(tokio::sync::Mutex::new(child));
+    if let Some(id) = &req.id {
+        CHILDREN.lock().unwrap().insert(id.clone(), child_arc.clone());
+    }
+    let run_id = req.id.clone().unwrap_or_default();
 
     let stage = req.stage.clone().unwrap_or_else(|| "external".to_string());
     let stage_stdout = stage.clone();
 
-    let stdout = child.stdout.take().expect("stdout piped");
-    let stderr = child.stderr.take().expect("stderr piped");
+    let stdout = child_arc.lock().await.stdout.take().expect("stdout piped");
+    let stderr = child_arc.lock().await.stderr.take().expect("stderr piped");
     let app_for_stdout = app.clone();
     let app_for_stderr = app.clone();
+    let run_id_stdout = run_id.clone();
+    let run_id_stderr = run_id.clone();
     let stdout_task = tauri::async_runtime::spawn(async move {
         let mut reader = BufReader::new(stdout);
         let mut line = String::new();
@@ -127,7 +144,11 @@ pub async fn run_external(
                     if !trimmed.is_empty() {
                         let _ = app_for_stdout.emit(
                             PROGRESS_EVENT,
-                            serde_json::json!({ "stage": stage_stdout, "detail": trimmed }),
+                            serde_json::json!({
+                                "run_id": run_id_stdout,
+                                "stage": stage_stdout,
+                                "detail": trimmed
+                            }),
                         );
                         collected.push_str(&line);
                     }
@@ -150,7 +171,11 @@ pub async fn run_external(
                     if !trimmed.is_empty() {
                         let _ = app_for_stderr.emit(
                             PROGRESS_EVENT,
-                            serde_json::json!({ "stage": stage, "detail": trimmed }),
+                            serde_json::json!({
+                                "run_id": run_id_stderr,
+                                "stage": stage,
+                                "detail": trimmed
+                            }),
                         );
                         collected.push_str(&line);
                     }
@@ -161,9 +186,20 @@ pub async fn run_external(
         collected
     });
 
-    let status = child.wait().await.map_err(|e| format!("等待进程失败: {e}"))?;
+    // 轮询等待退出：kill_external 可能已终止进程，try_wait 返回已退出状态而非双重 wait。
+    let status = loop {
+        if let Some(status) = child_arc.lock().await.try_wait().map_err(|e| format!("等待进程失败: {e}"))? {
+            break status;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    };
     let stdout_text = stdout_task.await.unwrap_or_default();
     let stderr_text = stderr_task.await.unwrap_or_default();
+
+    // 进程已退出，从注册表移除（若 kill_external 已移除则忽略）。
+    if let Some(id) = &req.id {
+        CHILDREN.lock().unwrap().remove(id);
+    }
 
     Ok(ExternalRunResult {
         exit_code: status.code().unwrap_or(-1),
@@ -252,4 +288,36 @@ pub async fn read_text_file(path: String) -> Result<String, String> {
 #[tauri::command]
 pub fn path_exists(path: String) -> bool {
     std::path::Path::new(&path).is_file()
+}
+
+/// 终止运行中的外部进程（按 run_external 登记的任务 id）。
+/// 从注册表移除并 kill；已结束/不存在时返回 false。
+#[tauri::command]
+pub async fn kill_external(id: String) -> Result<bool, String> {
+    let child_arc = CHILDREN.lock().unwrap().remove(&id);
+    let Some(child_arc) = child_arc else {
+        return Ok(false)
+    };
+    let mut guard = child_arc.lock().await;
+    let _ = guard.kill().await;
+    Ok(true)
+}
+
+/// 定位 / 创建音频缓存目录（app data cache/audio）。
+#[tauri::command]
+pub fn resolve_cache_dir(app: AppHandle) -> Result<String, String> {
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let dir = base.join("cache").join("audio");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("创建缓存目录失败: {e}"))?;
+    Ok(dir.to_string_lossy().to_string())
+}
+
+/// 递归删除目录（删除 session 产物用）。文件不存在视为成功。
+#[tauri::command]
+pub fn remove_dir(path: String) -> Result<(), String> {
+    let dir = std::path::Path::new(&path);
+    if !dir.exists() {
+        return Ok(())
+    }
+    std::fs::remove_dir_all(dir).map_err(|e| format!("删除目录失败: {e}"))
 }

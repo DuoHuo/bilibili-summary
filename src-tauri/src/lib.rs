@@ -9,6 +9,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             commands::run_external,
+            commands::kill_external,
+            commands::resolve_cache_dir,
+            commands::remove_dir,
             commands::ensure_whisper_model,
             commands::save_file,
             commands::resolve_output_dir,

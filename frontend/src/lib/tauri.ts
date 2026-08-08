@@ -9,6 +9,7 @@ import type { ExternalRunner, HttpFetch, HttpResponse } from "@/core/types"
  */
 
 export interface ProgressPayload {
+  run_id: string
   stage: string
   detail: string
 }
@@ -30,10 +31,12 @@ export const tauriHttpFetch: HttpFetch = async (url, init) => {
 /** run_external 封装：sidecar/PATH 解析 + 进度事件路由到 onLine。 */
 export const tauriRunner: ExternalRunner = async (program, args, options) => {
   const stage = options?.stage ?? null
+  const id = options?.id ?? null
   let unlisten: UnlistenFn | undefined
   if (stage && options?.onLine) {
     unlisten = await listen<ProgressPayload>("summary://progress", (event) => {
-      if (event.payload.stage === stage) {
+      // 并发路由：仅接收本任务（id 匹配）且阶段匹配的事件。
+      if ((!id || event.payload.run_id === id) && event.payload.stage === stage) {
         options.onLine?.(event.payload.detail)
       }
     })
@@ -45,12 +48,28 @@ export const tauriRunner: ExternalRunner = async (program, args, options) => {
         args,
         cwd: options?.cwd ?? null,
         env: options?.env ?? null,
-        stage
+        stage,
+        id
       }
     })
   } finally {
     await unlisten?.()
   }
+}
+
+/** 终止运行中的外部进程（按 run_id）。 */
+export function killExternal(id: string): Promise<boolean> {
+  return invoke("kill_external", { id })
+}
+
+/** 定位/创建音频缓存目录。 */
+export function resolveCacheDir(): Promise<string> {
+  return invoke("resolve_cache_dir")
+}
+
+/** 递归删除目录（删除 session 产物用）。 */
+export function removeDir(path: string): Promise<void> {
+  return invoke("remove_dir", { path })
 }
 
 /** 定位/下载 Whisper 模型。 */

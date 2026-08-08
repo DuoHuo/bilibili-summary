@@ -50,6 +50,15 @@ export interface UserConfig {
   cookie: string
   sttLanguage: "zh-cn" | "en"
   screenshot: boolean
+  /** B 站扫码登录的用户信息；null = 未登录。可选字段兼容旧配置。 */
+  biliProfile: BiliProfile | null
+}
+
+/** B 站登录用户信息（来自 nav 接口） */
+export interface BiliProfile {
+  uid: number
+  name: string
+  face: string
 }
 
 const PROMPT_MODES: readonly PromptMode[] = ["summary", "fulltext", "timestamp", "custom"]
@@ -57,6 +66,18 @@ const PROMPT_MODES: readonly PromptMode[] = ["summary", "fulltext", "timestamp",
 /** Allows missing `promptMode` so pre-migration configs still load. */
 function isValidPromptMode(value: unknown): value is PromptMode | undefined {
   return value === undefined || (typeof value === "string" && (PROMPT_MODES as readonly string[]).includes(value))
+}
+
+/** Allows missing `biliProfile` (null = logged out, undefined = pre-login configs). */
+function isValidBiliProfile(value: unknown): boolean {
+  if (value === undefined || value === null) return true
+  if (typeof value !== "object") return false
+  const record = value as Record<string, unknown>
+  return (
+    typeof record.uid === "number" &&
+    typeof record.name === "string" &&
+    typeof record.face === "string"
+  )
 }
 
 /**
@@ -75,6 +96,7 @@ export function isUserConfig(value: unknown): value is UserConfig {
     typeof record.cookie === "string" &&
     (record.sttLanguage === "zh-cn" || record.sttLanguage === "en") &&
     typeof record.screenshot === "boolean" &&
-    isValidPromptMode(record.promptMode)
+    isValidPromptMode(record.promptMode) &&
+    isValidBiliProfile(record.biliProfile)
   )
 }
