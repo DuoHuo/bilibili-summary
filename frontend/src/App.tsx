@@ -13,7 +13,7 @@ import { CustomPromptDialog } from "@/components/custom-prompt-dialog"
 import { LoginDialog } from "@/components/login-dialog"
 import { ResultPanel } from "@/components/result-panel"
 import { SessionList } from "@/components/session-list"
-import { SettingsView } from "@/components/settings-panel"
+import { SettingsView, type SettingsTab } from "@/components/settings-panel"
 import { SpikeMark } from "@/components/spike-mark"
 import { UrlForm } from "@/components/url-form"
 import { loadConfig, saveConfig } from "@/lib/config"
@@ -21,6 +21,7 @@ import { fetchNavInfo, logoutBili } from "@/lib/biliAuth"
 import { LEGACY_PROMPT, type PromptMode } from "@/lib/prompts"
 import type { BiliProfile, SummarizeResult, UserConfig } from "@/lib/types"
 import { readSessionOutput, useSessionManager } from "@/lib/sessions"
+import { testLlmConnection, type ProbeResult } from "@/lib/llmProbe"
 import { stripMarkdownTitle } from "@/core/render/markdown"
 import { openPath, saveFileDialog, tauriHttpFetch } from "@/lib/tauri"
 
@@ -158,6 +159,8 @@ function App() {
   const [configReady, setConfigReady] = useState(false)
   const [customPromptOpen, setCustomPromptOpen] = useState(false)
   const [loginOpen, setLoginOpen] = useState(false)
+  // 跳设置时的初始 Tab（如未填 API Key 引导到「模型」）
+  const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>("account")
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
   const [activeResult, setActiveResult] = useState<SummarizeResult | null>(null)
   const { sessions, start, cancel, remove, rerun } = useSessionManager({ config })
@@ -279,6 +282,11 @@ function App() {
     [activeResult]
   )
 
+  // 测试 LLM 连接（设置页「模型」Tab）：用当前配置发最小请求
+  const handleTestConnection = useCallback(async (): Promise<ProbeResult> => {
+    return testLlmConnection(tauriHttpFetch, config.apiKey, config.model, config.baseUrl)
+  }, [config.apiKey, config.model, config.baseUrl])
+
   const handleSubmit = useCallback(async () => {
     if (!url.trim()) {
       toast.error("请输入视频链接")
@@ -286,6 +294,7 @@ function App() {
     }
     if (!config.apiKey.trim()) {
       toast.error("请先在「设置」中填入 API Key")
+      setSettingsInitialTab("model")
       setView("settings")
       return
     }
@@ -460,11 +469,14 @@ function App() {
         <div className="min-h-0 flex-1 overflow-y-auto">
           {view === "settings" ? (
             <SettingsView
+              key={settingsInitialTab}
               config={config}
               onChange={patchConfig}
               profile={config.biliProfile}
               onLogin={() => setLoginOpen(true)}
               onLogout={() => void handleLogout()}
+              initialTab={settingsInitialTab}
+              onTestConnection={handleTestConnection}
             />
           ) : (view === "session" && activeSession) || (view === "session" && activeResult) ? (
             <div className="mx-auto flex w-full max-w-[1000px] flex-col gap-4 px-6 pb-10">

@@ -8,13 +8,9 @@
     {
       "identifier": "http:default",
       "allow": [
-        { "url": "https://*.bilibili.com/*" },
-        { "url": "https://bilibili.com/*" },
-        { "url": "https://*.hdslb.com/*" },
-        { "url": "https://*.biligame.com/*" },
-        { "url": "https://*.youtube.com/*" },
-        { "url": "https://youtube.com/*" },
-        { "url": "https://video.google.com/*" }
+        { "url": "https://*/*" },
+        { "url": "http://localhost:*/*" },
+        { "url": "http://127.0.0.1:*/*" }
       ]
     },
     "store:default",
