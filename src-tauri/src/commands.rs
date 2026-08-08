@@ -303,13 +303,10 @@ pub async fn kill_external(id: String) -> Result<bool, String> {
     Ok(true)
 }
 
-/// 定位 / 创建音频缓存目录（app data cache/audio）。
+/// 确保目录存在（截图 images 子目录等）。
 #[tauri::command]
-pub fn resolve_cache_dir(app: AppHandle) -> Result<String, String> {
-    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    let dir = base.join("cache").join("audio");
-    std::fs::create_dir_all(&dir).map_err(|e| format!("创建缓存目录失败: {e}"))?;
-    Ok(dir.to_string_lossy().to_string())
+pub fn create_dir(path: String) -> Result<(), String> {
+    std::fs::create_dir_all(&path).map_err(|e| format!("创建目录失败: {e}"))
 }
 
 /// 递归删除目录（删除 session 产物用）。文件不存在视为成功。

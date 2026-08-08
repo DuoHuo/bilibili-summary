@@ -62,9 +62,9 @@ export function killExternal(id: string): Promise<boolean> {
   return invoke("kill_external", { id })
 }
 
-/** 定位/创建音频缓存目录。 */
-export function resolveCacheDir(): Promise<string> {
-  return invoke("resolve_cache_dir")
+/** 确保目录存在（截图 images 子目录用）。 */
+export function ensureDir(path: string): Promise<void> {
+  return invoke("create_dir", { path })
 }
 
 /** 递归删除目录（删除 session 产物用）。 */

@@ -139,8 +139,8 @@ export async function runSummarize(
   // 3. whisper_transcribe（字幕缺失时兜底）
   if (!transcript) {
     scopedDeps.onProgress?.("whisper")
-    // 音频下载到集中缓存目录：同视频复用，避免重复下载。
-    const audioDir = (await scopedDeps.resolveCacheDir?.()) ?? `${runDir}/resources`
+    // 音频作为产物直接落盘到 run 目录（与摘要文件并列）
+    const audioDir = runDir
     transcript = await transcribeWithWhisper(
       scopedDeps,
       input.url,
@@ -212,11 +212,13 @@ export async function runSummarize(
     const markers = extractScreenshotMarkers(markdown)
     if (markers.length > 0) {
       const videoPath = await downloadVideoWithYtdlp(scopedDeps, input.url, input.cookie, `${runDir}/resources`)
-      const screenshotDir = `${runDir}/screenshots`
+      const screenshotDir = `${runDir}/images`
+      await scopedDeps.ensureDir(screenshotDir)
       for (const [index, [marker, timestamp]] of markers.entries()) {
         const imagePath = await generateScreenshot(scopedDeps, videoPath, screenshotDir, timestamp, index)
         const filename = imagePath.split("/").pop() ?? ""
-        markdown = markdown.replace(marker, `![](${screenshotDir}/${filename})`)
+        // 相对路径引用（产物目录可整体移动/分享）
+        markdown = markdown.replace(marker, `![](images/${filename})`)
       }
     }
   }

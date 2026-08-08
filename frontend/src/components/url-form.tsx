@@ -1,5 +1,6 @@
 import { Clock, FileText, Loader2, Search, Sparkles, SquarePen } from "lucide-react"
 
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import type { PromptMode } from "@/lib/prompts"
@@ -46,33 +47,24 @@ export function UrlForm({
         }}
         className="flex w-full flex-col gap-3"
       >
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-soft" />
-          <Input
-            type="url"
-            inputMode="url"
-            autoComplete="off"
-            spellCheck={false}
-            className="h-12 rounded-xl border-hairline bg-transparent pl-11 text-base"
-            placeholder="粘贴 Bilibili / YouTube 视频 URL"
-            value={url}
-            onChange={(event) => onUrlChange(event.target.value)}
-            disabled={loading}
-            aria-label="视频链接"
-          />
-        </div>
-        <div className="flex items-center justify-between gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={onOpenCustomPrompt}
-            className="text-muted"
-          >
-            <SquarePen className="size-3.5" />
-            自定义模板
-          </Button>
-          <SubmitButton loading={loading} disabled={disabled} />
+        {/* 输入框与生成按钮同一行；hero 态的自定义入口由下方模式卡片提供 */}
+        <div className="flex items-center gap-2">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-soft" />
+            <Input
+              type="url"
+              inputMode="url"
+              autoComplete="off"
+              spellCheck={false}
+              className="h-12 rounded-xl border-hairline bg-transparent pl-11 text-base"
+              placeholder="粘贴 Bilibili / YouTube 视频 URL"
+              value={url}
+              onChange={(event) => onUrlChange(event.target.value)}
+              disabled={loading}
+              aria-label="视频链接"
+            />
+          </div>
+          <SubmitButton loading={loading} disabled={disabled} className="h-12 shrink-0 rounded-xl px-6" />
         </div>
       </form>
     )
@@ -149,13 +141,17 @@ function ModeSegmented({
   )
 }
 
-function SubmitButton({ loading, disabled }: { loading: boolean; disabled: boolean }) {
+function SubmitButton({
+  loading,
+  disabled,
+  className
+}: {
+  loading: boolean
+  disabled: boolean
+  className?: string
+}) {
   return (
-    <Button
-      type="submit"
-      className="h-9 rounded-lg px-5"
-      disabled={disabled || loading}
-    >
+    <Button type="submit" className={cn("h-9 rounded-lg px-5", className)} disabled={disabled || loading}>
       {loading ? (
         <>
           <Loader2 className="size-4 animate-spin" />

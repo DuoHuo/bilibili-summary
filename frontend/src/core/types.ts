@@ -97,8 +97,8 @@ export interface SummarizeDeps {
   onProgress?: (stage: Stage, detail?: string) => void
   resolveModelPath: () => Promise<string>
   resolveOutputDir: (runId: string) => Promise<string>
-  /** 音频缓存目录（whisper 兜底下载到此处并复用）；缺省时退化为 resourcesDir */
-  resolveCacheDir?: () => Promise<string>
+  /** 确保目录存在（截图 images 子目录用） */
+  ensureDir: (path: string) => Promise<void>
   writeFile: (path: string, content: string) => Promise<void>
   readFile: (path: string) => Promise<string>
   isFile: (path: string) => Promise<boolean>

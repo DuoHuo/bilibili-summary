@@ -3,9 +3,9 @@ import type { SummarizeResult } from "./types"
 import type { PromptMode } from "./prompts"
 import {
   ensureWhisperModel,
+  ensureDir,
   pathIsFile,
   readTextFile,
-  resolveCacheDir,
   resolveOutputDir,
   tauriHttpFetch,
   tauriRunner,
@@ -63,7 +63,7 @@ export async function postSummarize(
         runner: tauriRunner,
         resolveModelPath: ensureWhisperModel,
         resolveOutputDir,
-        resolveCacheDir,
+        ensureDir,
         writeFile: writeTextFile,
         readFile: readTextFile,
         isFile: pathIsFile,

@@ -10,7 +10,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::run_external,
             commands::kill_external,
-            commands::resolve_cache_dir,
+            commands::create_dir,
             commands::remove_dir,
             commands::ensure_whisper_model,
             commands::save_file,

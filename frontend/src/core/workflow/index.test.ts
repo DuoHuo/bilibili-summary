@@ -88,7 +88,7 @@ function makeEnv(overrides: Partial<FakeEnv> = {}): FakeEnv {
     onProgress: (stage) => env.stages.push(stage),
     resolveModelPath: async () => "/models/base.bin",
     resolveOutputDir: async (runId) => `/tmp/out/${runId}`,
-    resolveCacheDir: async () => "/tmp/cache/audio",
+    ensureDir: async () => {},
     writeFile: async (path, content) => env.writes.push({ path, content }),
     readFile: async (path) => env.writes.find((w) => w.path === path)?.content ?? "{}",
     isFile: async (path) => {
