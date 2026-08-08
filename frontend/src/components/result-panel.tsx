@@ -26,7 +26,6 @@ interface ResultPanelProps {
   result: SummarizeResult | null
   error: string
   loading: boolean
-  apiBase: string
   normalizedMarkdown: string
   mode: PromptMode
   onCopyMarkdown: () => void
@@ -44,7 +43,6 @@ export function ResultPanel({
   result,
   error,
   loading,
-  apiBase,
   normalizedMarkdown,
   mode,
   onCopyMarkdown,
@@ -173,7 +171,7 @@ export function ResultPanel({
         <Separator />
 
         <p className="text-xs text-muted-soft">
-          产物地址：<span className="font-mono">{apiBase}/output/{result.run_id}</span>
+          产物已保存到本地目录（.md / .html / .txt），点击上方「产物」打开，或「链接」复制路径。
         </p>
       </div>
     </Frame>
@@ -182,8 +180,8 @@ export function ResultPanel({
 
 function Frame({ children }: { children: React.ReactNode }) {
   return (
-    <section className="mx-auto w-full max-w-[1200px] px-6 pb-24">
-      <div className="rounded-lg border border-hairline bg-canvas p-8 md:p-10">
+    <section className="mx-auto w-full max-w-[1200px]">
+      <div className="rounded-lg border border-hairline bg-canvas p-5">
         {children}
       </div>
     </section>
@@ -193,7 +191,7 @@ function Frame({ children }: { children: React.ReactNode }) {
 function LoadingFrame() {
   return (
     <Frame>
-      <div className="flex flex-col items-center gap-4 py-16 text-center">
+      <div className="flex flex-col items-center gap-4 py-12 text-center">
         <div className="size-3 animate-pulse rounded-full bg-primary" />
         <p className="font-serif text-xl text-ink">正在生成摘要…</p>
         <p className="text-sm text-muted">
@@ -206,7 +204,7 @@ function LoadingFrame() {
 
 function EmptyState() {
   return (
-    <div className="flex flex-col items-center gap-4 py-16 text-center">
+    <div className="flex flex-col items-center gap-4 py-12 text-center">
       <div className="size-12 rounded-full border border-hairline bg-surface-soft" />
       <p className="font-serif text-xl text-ink">还没有摘要</p>
       <p className="max-w-md text-sm text-muted">

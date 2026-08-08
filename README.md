@@ -1,10 +1,12 @@
 # Video Summary
 
-输入一条 B 站 / YouTube 链接，自动生成结构化视频摘要。前端 Anthropic 风格暖色编辑设计，后端 Rust 工作流编排（平台识别 → 字幕抓取 / Whisper 转录 → LLM 总结 → Markdown / HTML 产物）。
+输入一条 B 站 / YouTube 链接，自动生成结构化视频摘要。**Tauri 2 桌面 GUI**：核心业务逻辑全部 TypeScript（`frontend/src/core/`），Rust 仅保留极薄系统能力壳（子进程 / 文件 / 对话框）。
 
-- **Frontend**: React 18 + Vite 8 + TypeScript 5.9 + Tailwind v4 + shadcn/ui
-- **Backend**: Rust (edition 2024) + Axum 0.7 + Tokio + PocketFlow
-- **Package manager**: pnpm (前端) + cargo (后端)
+- **UI**: React 18 + Vite + TypeScript 5.9 + Tailwind v4 + shadcn/ui
+- **核心层**: TypeScript（平台识别 / 字幕抓取 / Whisper 转录 / LLM 调用 / Markdown·HTML 渲染）
+- **壳**: Tauri 2（Rust，仅 spawn 外部二进制 + 文件系统 + 原生对话框）
+- **跨平台**: Windows / macOS / Linux
+- **CI/CD**: GitHub Actions（CI 三平台检查；CD 打 tag 发布三平台安装包 + sidecar）
 
 > 设计参考 [BibiGPT-v1](https://github.com/JimmyLv/BibiGPT-v1) 与 [BiliNote](https://github.com/JefferyHcool/BiliNote)；视觉系统见 [`DESIGN.md`](./DESIGN.md)（cream canvas + coral primary + 深色 surface）。
 
@@ -13,46 +15,35 @@
 - 支持 Bilibili / YouTube 链接（自动识别平台）
 - 优先抓取官方字幕，无字幕时回退到本地 Whisper 转录
 - OpenAI 兼容接口（默认 `gpt-4o-mini`，可改 `base_url` 接 DeepSeek 等）
-- 可选二次字幕润色、ffmpeg 截图标注
-- 结构化 Markdown + HTML（"东方简约信纸"模板）输出
-- 配置持久化到浏览器 IndexedDB，不上传服务器
-- 三视图切换：摘要 / 字幕 / 原始 Markdown；支持复制、下载、产物直链
+- 四模式：摘要 / 全文 / 时间戳 / 自定义模板（token `{{title}}` / `{{transcript}}`）
+- 结构化 Markdown + HTML（"东方简约信纸"模板）产物，原生"另存为"导出
+- 配置持久化到应用数据目录（重启保留）
 
 ## 目录结构
 
 ```
 video-summary/
 ├── frontend/                 # React + Vite + Tailwind + shadcn/ui
-│   ├── src/
-│   │   ├── App.tsx           # 顶层布局 + 状态 + API 编排
-│   │   ├── main.tsx          # 挂载点
-│   │   ├── index.css         # Tailwind v4 @theme tokens（DESIGN.md 色板）
-│   │   ├── components/
-│   │   │   ├── ui/           # shadcn 原语（button/input/dialog/...）
-│   │   │   ├── top-nav.tsx
-│   │   │   ├── hero.tsx
-│   │   │   ├── url-form.tsx
-│   │   │   ├── settings-panel.tsx
-│   │   │   ├── result-panel.tsx
-│   │   │   ├── footer.tsx
-│   │   │   └── spike-mark.tsx
-│   │   └── lib/              # utils / types / api / config / transcript
-│   ├── components.json       # shadcn 配置
-│   ├── tsconfig.json
-│   └── vite.config.ts
-├── backend/                  # Rust + Axum + PocketFlow
-│   ├── src/
-│   │   ├── main.rs           # 路由 + CORS + ServeDir，绑 0.0.0.0:8787
-│   │   ├── summarize.rs      # DTO + PocketFlow 工作流 + HTML 渲染
-│   │   ├── services.rs       # 平台/字幕/Whisper/LLM/yt-dlp/ffmpeg
-│   │   └── utils.rs          # 时间戳/XML/正则工具
-│   ├── Cargo.toml
-│   └── models/               # ggml-base.bin（gitignored，自动下载）
+│   └── src/
+│       ├── core/             # TS 核心层（纯逻辑，可单测，依赖注入）
+│       │   ├── platform/     # URL 解析 / 平台识别
+│       │   ├── subtitle/     # B站 / YouTube 字幕抓取与解析
+│       │   ├── transcript/   # 时间戳格式化 / 15s 段合并
+│       │   ├── whisper/      # yt-dlp 下载 / whisper-cli 转写 / cookie
+│       │   ├── llm/          # 提示词构建 / OpenAI 兼容调用
+│       │   ├── render/       # Markdown 组装 / HTML 模板 / 截图标记
+│       │   ├── workflow/     # 摘要流水线编排（状态机）
+│       │   └── __fixtures__/ # 回归测试样本
+│       ├── components/       # UI 组件
+│       └── lib/              # tauri 桥接 / api / config / prompts / types
+├── src-tauri/                # Tauri 2 Rust 壳
+│   ├── src/commands.rs       # run_external / save_file / 模型 / 产物目录
+│   ├── binaries/             # sidecar（yt-dlp/ffmpeg/whisper-cli，CD 阶段下载）
+│   └── tauri.conf.json
+├── scripts/fetch-binaries.sh # sidecar 二进制分发脚本（本地与 CI 共用）
+├── .github/workflows/        # ci.yml（三平台检查）+ release.yml（三平台打包发布）
 ├── Makefile                  # 顶层编排（推荐入口）
-├── start.sh                  # 旧版一键启动脚本（保留）
-├── DESIGN.md                 # 设计系统规范
-├── AGENTS.md                 # AI 助手开发指南
-└── docs/harness/records/     # 变更记录
+└── DESIGN.md                 # 设计系统规范
 ```
 
 ## 快速开始
@@ -62,117 +53,60 @@ video-summary/
 | 工具 | 用途 | 安装 |
 | --- | --- | --- |
 | Node ≥ 20 + pnpm | 前端 | https://nodejs.org + `npm i -g pnpm` |
-| Rust (stable) | 后端 | https://rustup.rs |
-| yt-dlp | 音频下载（Whisper 路径） | `brew install yt-dlp` |
+| Rust (stable) | Tauri 壳 | https://rustup.rs |
+| yt-dlp | 音频/视频下载（Whisper / 截图路径） | `brew install yt-dlp` |
 | ffmpeg | 音频转码 / 视频截图 | `brew install ffmpeg` |
+| whisper-cli | 本地转录（whisper.cpp） | 见下方说明 |
 
-Whisper 模型首次使用时自动从 HuggingFace 下载到 `backend/models/ggml-base.bin`，可用 `WHISPER_MODEL_PATH` 改路径。
+> Windows 用户可用 `choco install yt-dlp ffmpeg`；Linux 用户用 `apt install yt-dlp ffmpeg`。
+> 开发期外部二进制走系统 PATH；**打包期**由 `scripts/fetch-binaries.sh` 统一拉取为 sidecar（无需本地安装）。
 
-### 一键启动（推荐）
+Whisper 模型（`ggml-base.bin`）首次转录时自动下载到应用数据目录，无需手动准备。
 
-```bash
-make install     # 首次：pnpm install + cargo fetch
-make dev         # 并行启动前后端，Ctrl-C 同时退出
-```
-
-- 前端：<http://localhost:5173>
-- 后端：<http://localhost:8787>
-
-### 手动启动
+### 启动（推荐）
 
 ```bash
-# 后端
-cd backend && cargo run           # 监听 0.0.0.0:8787
-
-# 前端（另起一个终端）
-cd frontend && pnpm install && pnpm dev
+make install     # 首次：pnpm install
+make dev         # 打开桌面窗口（等价 pnpm tauri dev）
 ```
 
-### 旧版脚本
+### 常用 make 目标
 
 ```bash
-bash start.sh                     # 仍可用，行为同 make install + make dev
+make help             # 列出全部目标
+make install          # 安装前端依赖
+make dev              # Tauri 开发模式（打开窗口）
+make build            # 打包（tauri build，生成安装包）
+make test             # vitest 单元测试
+make check            # tsc --noEmit + cargo check
+make fetch-binaries   # 拉取 sidecar 二进制（打包前调用）
 ```
-
-## 常用 make 目标
-
-```bash
-make help         # 列出全部目标
-make install      # 安装前后端依赖
-make dev          # 并行启动开发服务
-make build        # 生产构建（cargo build --release + vite build）
-make run          # 跑生产构建产物
-make check        # 快速类型检查（cargo check + tsc --noEmit）
-make test         # 跑测试（当前 0 个，详见 AGENTS.md）
-make clean        # 清理所有构建产物
-```
-
-可用变量：`FRONTEND_PORT=5173 BACKEND_PORT=8787 VITE_API_BASE=...`，例如 `make dev FRONTEND_PORT=3000`。
-
-## 环境变量
-
-| 变量 | 端 | 默认 | 作用 |
-| --- | --- | --- | --- |
-| `VITE_API_BASE` | 前端 | `http://localhost:8787` | 后端地址（`make dev` 自动设置） |
-| `OUTPUT_DIR` | 后端 | `output` | 产物输出目录，挂在 `/output/*` |
-| `RUST_LOG` | 后端 | `info` | tracing 日志级别 |
-| `WHISPER_MODEL_PATH` | 后端 | `models/ggml-base.bin` | Whisper 模型路径 |
-| `SUMMARY_HTML_SUBTITLE` | 后端 | `东方简约信纸 · Video Summary` | HTML 模板副标题 |
-| `SUMMARY_HTML_STAMP` | 后端 | `摘要` | HTML 模板印章文字 |
-
-> LLM 的 `api_key` / `base_url` / `model` / `prompt` / `cookie` 是**每次请求**的字段，在 UI「设置」面板里填写，不会进环境变量。
 
 ## 使用流程
 
-1. 打开 <http://localhost:5173>
-2. 点击「设置」填入 API Key（必填），可按需填 Base URL、模型、Cookie、提示词等
-3. 粘贴 B 站 / YouTube 链接，点击「生成摘要」
-4. 在结果区切 Tab 查看 摘要 / 字幕 / 原始 Markdown，复制或下载 `.md` / `.html`
+1. 打开桌面应用，点击右上「设置」填入 API Key（必填），可按需填 Base URL、模型、Cookie、提示词等
+2. 粘贴 B 站 / YouTube 链接，选择模式（摘要 / 全文 / 时间戳 / 自定义），点击「生成」
+3. 在结果区切换 摘要 / 字幕 / 原始 Markdown，复制或「另存为」`.md` / `.html`
+4. 产物自动保存到本地产物目录（`.md` / `.html` / `.txt`），可一键打开
 
-## API 说明
+## 外部二进制与打包（CD）
 
-### `POST /api/summarize`
+- **开发期**：yt-dlp / ffmpeg / whisper-cli 从系统 PATH 查找。
+- **打包期**：`scripts/fetch-binaries.sh` 按 target-triple 下载三平台二进制到 `src-tauri/binaries/{name}-{target-triple}`（Tauri sidecar 机制），本地与 GitHub Actions 共用同一脚本。
+- **已知限制**：whisper.cpp 官方 releases 不提供 macOS arm64 预编译 CLI——该平台打包时需自行构建或 PATH 提供 whisper-cli（详见脚本注释）。
 
-请求体：
+## GitHub Actions
 
-```json
-{
-  "url": "https://www.bilibili.com/video/BV1xx4y1x7xx",
-  "api_key": "sk-...",
-  "model": "gpt-4o-mini",
-  "base_url": "https://api.openai.com/v1",
-  "prompt": "（可选，支持 {{title}} / {{transcript}} 模板）",
-  "cookie": "（可选，B 站会员字幕用）",
-  "stt_language": "zh-cn",
-  "refine_transcript": true,
-  "screenshot": false
-}
+| Workflow | 触发 | 内容 |
+| --- | --- | --- |
+| `ci.yml` | push / PR | 三平台（ubuntu/macos/windows）：pnpm test + build + cargo check |
+| `release.yml` | tag `v*` / 手动 | 三平台（含 macOS 双架构）打包 + sidecar 拉取 + GitHub Release 发布 |
+
+打 tag 示例：
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
 ```
-
-只有 `url` 与 `api_key` 必填，其余可省。
-
-响应体：
-
-```json
-{
-  "run_id": "20260326-123456-abc123",
-  "title": "视频标题",
-  "summary": "一句话高密度摘要",
-  "markdown": "# 标题\n\n...",
-  "html": "<!doctype html>...",
-  "html_subtitle": "东方简约信纸 · Video Summary",
-  "html_stamp": "摘要",
-  "transcript": "完整字幕拼接文本",
-  "transcript_segments": [
-    { "start": 12.3, "end": 15.4, "text": "字幕片段" }
-  ],
-  "transcript_source": "subtitle"
-}
-```
-
-`transcript_source` ∈ `subtitle | whisper | whisper_refined`。所有失败统一返回 `HTTP 400 + {"message": "..."}`。
-
-产物文件落到 `${OUTPUT_DIR}/{run_id}/`：`summary_{run_id}.md`、`summary_{run_id}.html`、`transcript_{run_id}.txt`，通过 `GET /output/{run_id}/` 访问。
 
 ## 许可与致谢
 

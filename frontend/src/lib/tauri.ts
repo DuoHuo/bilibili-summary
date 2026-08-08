@@ -1,0 +1,90 @@
+import { invoke } from "@tauri-apps/api/core"
+import { listen, type UnlistenFn } from "@tauri-apps/api/event"
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http"
+import type { ExternalRunner, HttpFetch, HttpResponse } from "@/core/types"
+
+/**
+ * 桥接层：把 Tauri 系统能力封装成 core 层依赖注入接口。
+ * httpFetch / externalRunner / ensureWhisperModel / saveFileDialog / resolveOutputDir。
+ */
+
+export interface ProgressPayload {
+  stage: string
+  detail: string
+}
+
+/** plugin-http 封装：绕开 WebView CORS。 */
+export const tauriHttpFetch: HttpFetch = async (url, init) => {
+  let body: BodyInit | undefined
+  if (init?.body !== undefined) {
+    body = typeof init.body === "string" ? init.body : JSON.stringify(init.body)
+  }
+  const response = await tauriFetch(url, {
+    method: init?.method ?? "GET",
+    headers: init?.headers,
+    body
+  })
+  return response as unknown as HttpResponse
+}
+
+/** run_external 封装：sidecar/PATH 解析 + 进度事件路由到 onLine。 */
+export const tauriRunner: ExternalRunner = async (program, args, options) => {
+  const stage = options?.stage ?? null
+  let unlisten: UnlistenFn | undefined
+  if (stage && options?.onLine) {
+    unlisten = await listen<ProgressPayload>("summary://progress", (event) => {
+      if (event.payload.stage === stage) {
+        options.onLine?.(event.payload.detail)
+      }
+    })
+  }
+  try {
+    return await invoke("run_external", {
+      req: {
+        program,
+        args,
+        cwd: options?.cwd ?? null,
+        env: options?.env ?? null,
+        stage
+      }
+    })
+  } finally {
+    await unlisten?.()
+  }
+}
+
+/** 定位/下载 Whisper 模型。 */
+export function ensureWhisperModel(): Promise<string> {
+  return invoke("ensure_whisper_model")
+}
+
+/** 原生另存为对话框并写入内容。 */
+export function saveFileDialog(suggestedName: string, content: string): Promise<string | null> {
+  return invoke("save_file", { suggestedName, content })
+}
+
+/** 定位/创建产物目录。 */
+export function resolveOutputDir(runId: string): Promise<string> {
+  return invoke("resolve_output_dir", { runId })
+}
+
+/** 写入文本文件。 */
+export function writeTextFile(path: string, content: string): Promise<void> {
+  return invoke("write_text_file", { path, content })
+}
+
+/** 读取文本文件。 */
+export function readTextFile(path: string): Promise<string> {
+  return invoke("read_text_file", { path })
+}
+
+/** 判断路径是否为文件。 */
+export function pathIsFile(path: string): Promise<boolean> {
+  return invoke("path_exists", { path })
+}
+
+/** 用系统默认应用打开路径（产物目录 / 文件）。 */
+export async function openPath(path: string): Promise<void> {
+  const { openPath: open } = await import("@tauri-apps/plugin-opener")
+  await open(path)
+}

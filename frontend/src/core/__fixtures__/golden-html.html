@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>测试视频 - Video Summary</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #2d2a24;
+        --paper: #f7f1e3;
+        --edge: #d8c9aa;
+        --accent: #b0894f;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        padding: 48px 20px;
+        font-family: "Noto Serif SC", "Songti SC", serif;
+        background: radial-gradient(circle at top, rgba(255, 255, 255, 0.8), transparent 55%),
+          linear-gradient(145deg, #fdf9f0, #efe3c8),
+          url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='%23cdbb99' fill-opacity='0.12'%3E%3Cpath d='M8 16c8 10 24 2 30 12 4 6-6 14-1 20 5 6 16 0 22 8 6 8-2 14-8 18-6 4-10 10-7 16'/%3E%3Cpath d='M60 8c6 10 18 6 26 14 6 6 0 12 6 18 6 6 18 0 20 10 2 8-10 10-16 14-6 4-8 12-4 18'/%3E%3Cpath d='M20 80c8 8 18 0 26 10 6 8-2 14 2 20 4 6 14 4 22 10'/%3E%3Cpath d='M86 72c6 8 16 4 20 12 4 8-4 12-8 18'/%3E%3C/g%3E%3Cg fill='%23a48f69' fill-opacity='0.08'%3E%3Ccircle cx='18' cy='32' r='1.5'/%3E%3Ccircle cx='44' cy='54' r='1.2'/%3E%3Ccircle cx='70' cy='26' r='1.4'/%3E%3Ccircle cx='92' cy='58' r='1.1'/%3E%3Ccircle cx='36' cy='92' r='1.3'/%3E%3Ccircle cx='64' cy='88' r='1.1'/%3E%3C/g%3E%3C/svg%3E");
+        color: var(--ink);
+      }
+      article {
+        max-width: 880px;
+        margin: 0 auto;
+        background: linear-gradient(180deg, rgba(255, 252, 245, 0.96), rgba(244, 234, 214, 0.95)),
+          url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cg stroke='%23c7b08b' stroke-opacity='0.2' stroke-width='1'%3E%3Cpath d='M8 20c12 14 30 6 42 16 10 8-2 18 8 26 10 8 28 2 38 12 10 10-2 18-10 24' fill='none'/%3E%3Cpath d='M60 10c8 14 24 10 34 20 8 8 0 16 10 24 10 8 26 2 30 14' fill='none'/%3E%3Cpath d='M24 92c10 10 22 2 32 12 8 10-2 18 6 26' fill='none'/%3E%3C/g%3E%3Cg fill='%23bfa37a' fill-opacity='0.12'%3E%3Ccircle cx='28' cy='40' r='1.4'/%3E%3Ccircle cx='78' cy='52' r='1.2'/%3E%3Ccircle cx='112' cy='34' r='1.1'/%3E%3Ccircle cx='44' cy='120' r='1.3'/%3E%3Ccircle cx='96' cy='118' r='1.2'/%3E%3C/g%3E%3C/svg%3E");
+        border: 1px solid var(--edge);
+        box-shadow: 0 28px 50px rgba(80, 60, 30, 0.18);
+        padding: 36px 40px 48px;
+        position: relative;
+      }
+      article::before {
+        content: "";
+        position: absolute;
+        inset: 16px;
+        border: 1px dashed rgba(176, 137, 79, 0.35);
+        pointer-events: none;
+      }
+      header {
+        border-bottom: 1px solid var(--edge);
+        padding-bottom: 16px;
+        margin-bottom: 24px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-family: "Ma Shan Zheng", "Noto Serif SC", serif;
+        font-size: 32px;
+        letter-spacing: 2px;
+        color: #402c1f;
+      }
+      .subtitle {
+        font-size: 14px;
+        color: #6f5a3d;
+      }
+      h2 {
+        margin: 26px 0 10px;
+        font-size: 18px;
+        color: #4b3a25;
+        display: inline-block;
+        padding: 4px 12px;
+        border-left: 3px solid var(--accent);
+        background: rgba(176, 137, 79, 0.08);
+      }
+      p {
+        line-height: 1.9;
+        margin: 0 0 12px;
+      }
+      ul, ol {
+        margin: 0 0 12px 20px;
+        padding: 0;
+        line-height: 1.9;
+      }
+      pre {
+        margin: 12px 0 0;
+        padding: 16px;
+        background: #fbf6ea;
+        border-left: 3px solid var(--accent);
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: "Noto Serif SC", "Songti SC", serif;
+        line-height: 1.8;
+      }
+      img {
+        max-width: 100%;
+        border-radius: 12px;
+        border: 1px solid rgba(176, 137, 79, 0.25);
+      }
+      .stamp {
+        position: absolute;
+        top: 32px;
+        right: 32px;
+        width: 72px;
+        height: 72px;
+        border: 2px solid var(--accent);
+        color: var(--accent);
+        display: grid;
+        place-items: center;
+        font-family: "Ma Shan Zheng", "Noto Serif SC", serif;
+        transform: rotate(8deg);
+      }
+    </style>
+  </head>
+  <body>
+    <article>
+      <div class="stamp">摘要</div>
+      <header>
+        <h1>测试视频</h1>
+        <div class="subtitle">东方简约信纸 · Video Summary</div>
+      </header>
+      <h2>摘要</h2>
+<p>一句话高密度摘要。</p>
+<ul>
+<li>要点 A</li>
+<li>要点 B</li>
+</ul>
+<table><thead><tr><th>列1</th><th>列2</th></tr></thead><tbody>
+<tr><td>甲</td><td>乙</td></tr>
+</tbody></table>
+<p><del>删除线</del> 与 <code>inline code</code></p>
+<pre><code>代码块
+</code></pre>
+
+    </article>
+  </body>
+</html>

@@ -1,36 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { Settings2 } from "lucide-react"
 import { toast, Toaster } from "sonner"
 
 import { CustomPromptDialog } from "@/components/custom-prompt-dialog"
 import { ResultPanel } from "@/components/result-panel"
 import { SettingsPanel } from "@/components/settings-panel"
+import { SpikeMark } from "@/components/spike-mark"
+import { Button } from "@/components/ui/button"
 import { UrlForm } from "@/components/url-form"
 import { postSummarize, SummarizeError, type SummarizePayload } from "@/lib/api"
 import { loadConfig, saveConfig } from "@/lib/config"
 import { LEGACY_PROMPT, resolvePrompt } from "@/lib/prompts"
 import type { SummarizeResult, UserConfig } from "@/lib/types"
-
-function stripMarkdownTitle(markdown: string) {
-  const lines = markdown.replace(/\r\n/g, "\n").split("\n")
-  const output: string[] = []
-  let skippedTitle = false
-
-  for (let index = 0; index < lines.length; index++) {
-    const line = lines[index]
-    if (!skippedTitle && line.trimStart().startsWith("# ")) {
-      skippedTitle = true
-      if (index + 1 < lines.length && lines[index + 1].trim()) {
-        output.push(lines[index + 1])
-      } else {
-        index++
-      }
-      continue
-    }
-    output.push(line)
-  }
-
-  return output.join("\n").trim()
-}
+import { stripMarkdownTitle } from "@/core/render/markdown"
+import { openPath, resolveOutputDir, saveFileDialog } from "@/lib/tauri"
 
 function normalizeTranscriptSection(markdown: string) {
   const timestampPattern = /\[\d{2}:\d{2}(?:-\d{2}:\d{2})?\]/g
@@ -143,11 +126,6 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
-  const apiBase = useMemo(() => {
-    const envBase = import.meta.env.VITE_API_BASE
-    return envBase ? envBase.replace(/\/$/, "") : "http://localhost:8787"
-  }, [])
-
   // Load persisted config once.
   useEffect(() => {
     let active = true
@@ -211,7 +189,7 @@ function App() {
 
     setLoading(true)
     try {
-      const data = await postSummarize(apiBase, payload)
+      const data = await postSummarize("", payload)
       setResult(data)
       toast.success("摘要生成完成", {
         description: data.title || undefined
@@ -226,7 +204,7 @@ function App() {
     } finally {
       setLoading(false)
     }
-  }, [apiBase, config, url])
+  }, [config, url])
 
   const handleCopyMarkdown = useCallback(async () => {
     if (!result) return
@@ -241,80 +219,78 @@ function App() {
       if (!result) return
       const isMarkdown = kind === "markdown"
       const content = isMarkdown ? result.markdown : result.html
-      const mime = isMarkdown ? "text/markdown" : "text/html"
       const ext = isMarkdown ? "md" : "html"
-      const blob = new Blob([content], { type: `${mime};charset=utf-8` })
-      const objectUrl = URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = objectUrl
-      link.download = `${result.title || "bilibili"}.${ext}`
-      link.click()
-      URL.revokeObjectURL(objectUrl)
-      toast.success(`已下载 .${ext}`)
+      const saved = await saveFileDialog(`${result.title || "bilibili"}.${ext}`, content)
+      if (saved) {
+        toast.success(`已保存 .${ext}`)
+      }
     },
     [result]
   )
 
-  const handleOpenOutput = useCallback(() => {
+  const handleOpenOutput = useCallback(async () => {
     if (!result?.run_id) return
-    window.open(
-      `${apiBase}/output/${result.run_id}`,
-      "_blank",
-      "noopener,noreferrer"
-    )
-  }, [apiBase, result])
+    const dir = await resolveOutputDir(result.run_id)
+    await openPath(dir)
+  }, [result])
 
   const handleCopyOutput = useCallback(async () => {
     if (!result?.run_id) return
-    await navigator.clipboard.writeText(`${apiBase}/output/${result.run_id}`)
-    toast.success("已复制产物链接")
-  }, [apiBase, result])
+    const dir = await resolveOutputDir(result.run_id)
+    await navigator.clipboard.writeText(dir)
+    toast.success("已复制产物目录路径")
+  }, [result])
 
   return (
-    <div className="flex min-h-screen flex-col bg-canvas">
-      <section className="mx-auto w-full max-w-[1200px] px-6 pt-20 md:pt-28">
-        <div className="flex flex-col items-start gap-6">
-          <span className="rounded-full bg-surface-soft px-3 py-1 text-xs font-medium text-ink">
-            SiriusX Summary
+    <div className="flex h-screen flex-col bg-canvas">
+      {/* 顶部工具栏：紧凑，设置入口在此 */}
+      <header className="flex h-12 shrink-0 items-center justify-between border-b border-hairline px-4">
+        <div className="flex items-center gap-2">
+          <SpikeMark className="size-4 text-ink" />
+          <span className="font-serif text-base font-medium tracking-tight text-ink">
+            Video Summary
           </span>
-          <h1 className="display-xl text-ink">
-            把一段视频，
-            <br />
-            浓缩成一篇可读的笔记。
-          </h1>
-          <p className="max-w-2xl text-lg leading-relaxed text-body">
-            粘贴 B 站或 YouTube 链接，自动抓取字幕（必要时本地 Whisper 转录），
-            调用大模型生成结构化 Markdown 摘要，可下载、可分享、可归档。
-          </p>
         </div>
-        <div className="mt-10 md:mt-12">
-          <UrlForm
-            url={url}
-            onUrlChange={setUrl}
-            onSubmit={handleSubmit}
-            onOpenSettings={() => setSettingsOpen(true)}
-            loading={loading}
-            disabled={!url.trim() || !config.apiKey.trim()}
-            promptMode={config.promptMode}
-            onPromptModeChange={(mode) => patchConfig({ promptMode: mode })}
-            onOpenCustomPrompt={() => setCustomPromptOpen(true)}
-          />
-        </div>
-      </section>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => setSettingsOpen(true)}
+        >
+          <Settings2 className="size-4" />
+          设置
+        </Button>
+      </header>
 
-      <ResultPanel
-        result={result}
-        error={error}
-        loading={loading}
-        apiBase={apiBase}
-        normalizedMarkdown={normalizedMarkdown}
-        mode={config.promptMode}
-        onCopyMarkdown={handleCopyMarkdown}
-        onDownloadMarkdown={() => handleDownload("markdown")}
-        onDownloadHtml={() => handleDownload("html")}
-        onOpenOutput={handleOpenOutput}
-        onCopyOutput={handleCopyOutput}
-      />
+      {/* 输入区：紧凑，不再是大 hero */}
+      <div className="shrink-0 border-b border-hairline px-4 py-3">
+        <UrlForm
+          url={url}
+          onUrlChange={setUrl}
+          onSubmit={handleSubmit}
+          loading={loading}
+          disabled={!url.trim() || !config.apiKey.trim()}
+          promptMode={config.promptMode}
+          onPromptModeChange={(mode) => patchConfig({ promptMode: mode })}
+          onOpenCustomPrompt={() => setCustomPromptOpen(true)}
+        />
+      </div>
+
+      {/* 结果区：占满剩余空间并内部滚动 */}
+      <main className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        <ResultPanel
+          result={result}
+          error={error}
+          loading={loading}
+          normalizedMarkdown={normalizedMarkdown}
+          mode={config.promptMode}
+          onCopyMarkdown={handleCopyMarkdown}
+          onDownloadMarkdown={() => handleDownload("markdown")}
+          onDownloadHtml={() => handleDownload("html")}
+          onOpenOutput={handleOpenOutput}
+          onCopyOutput={handleCopyOutput}
+        />
+      </main>
 
       <SettingsPanel
         open={settingsOpen}

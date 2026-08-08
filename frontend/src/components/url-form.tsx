@@ -1,4 +1,4 @@
-import { Clock, FileText, Loader2, Search, Settings2, Sparkles, SquarePen } from "lucide-react"
+import { Clock, FileText, Loader2, Search, Sparkles, SquarePen } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -8,7 +8,6 @@ interface UrlFormProps {
   url: string
   onUrlChange: (value: string) => void
   onSubmit: () => void
-  onOpenSettings: () => void
   loading: boolean
   disabled: boolean
   promptMode: PromptMode
@@ -30,7 +29,6 @@ export function UrlForm({
   url,
   onUrlChange,
   onSubmit,
-  onOpenSettings,
   loading,
   disabled,
   promptMode,
@@ -38,22 +36,22 @@ export function UrlForm({
   onOpenCustomPrompt
 }: UrlFormProps) {
   return (
-    <div className="flex w-full flex-col gap-3">
+    <div className="flex w-full flex-col gap-2">
       <form
         onSubmit={(event) => {
           event.preventDefault()
           onSubmit()
         }}
-        className="flex w-full flex-col gap-3 sm:flex-row sm:items-center"
+        className="flex w-full items-center gap-2"
       >
         <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-soft" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-soft" />
           <Input
             type="url"
             inputMode="url"
             autoComplete="off"
             spellCheck={false}
-            className="h-12 rounded-md pl-11 text-base"
+            className="h-10 rounded-md pl-9 text-sm"
             placeholder="粘贴 Bilibili / YouTube 视频 URL"
             value={url}
             onChange={(event) => onUrlChange(event.target.value)}
@@ -61,7 +59,7 @@ export function UrlForm({
             aria-label="视频链接"
           />
         </div>
-        <Button type="submit" size="lg" className="h-12 px-6" disabled={disabled || loading}>
+        <Button type="submit" className="h-10 px-5" disabled={disabled || loading}>
           {loading ? (
             <>
               <Loader2 className="size-4 animate-spin" />
@@ -70,10 +68,6 @@ export function UrlForm({
           ) : (
             "生成"
           )}
-        </Button>
-        <Button type="button" variant="secondary" size="lg" className="h-12" onClick={onOpenSettings}>
-          <Settings2 className="size-4" />
-          设置
         </Button>
       </form>
 
@@ -87,7 +81,7 @@ export function UrlForm({
                 key={option.value}
                 type="button"
                 onClick={() => onPromptModeChange(option.value)}
-                className={`inline-flex items-center gap-1.5 rounded-[6px] px-3 py-1.5 text-sm transition-colors ${
+                className={`inline-flex items-center gap-1.5 rounded-[6px] px-3 py-1 text-xs transition-colors ${
                   active
                     ? "bg-primary text-white"
                     : "text-ink hover:bg-surface-card"

@@ -1,0 +1,14 @@
+{
+  "id": "chatcmpl-example",
+  "model": "gpt-4o-mini",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "## 核心论点\n\n一句话高密度摘要。\n\n## 关键要点\n\n- 要点一\n- 要点二\n\n## 启示\n\n一段反思。"
+      },
+      "finish_reason": "stop"
+    }
+  ]
+}

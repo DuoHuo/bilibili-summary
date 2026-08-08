@@ -31,8 +31,7 @@ backend/target/
 backend/models/
 backend/resources/
 
-# frontend
-frontend/node_modules/
+# frontendfrontend/node_modules/
 frontend/build/
 frontend/dist/
 

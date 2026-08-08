@@ -1,0 +1,7 @@
+{
+  "body": [
+    { "from": 0.5, "to": 3.2, "content": "大家好，欢迎收看本期视频。" },
+    { "from": 3.5, "to": 6.8, "content": "今天我们来聊聊 TypeScript 与 Tauri。" },
+    { "from": 7.0, "to": 10.4, "content": "   " }
+  ]
+}

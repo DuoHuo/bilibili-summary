@@ -1,0 +1,4 @@
+target/
+# 外部二进制 sidecar（打包/CD 阶段由 fetch-binaries.sh 下载；开发期占位为空）
+binaries/*-*
+gen/

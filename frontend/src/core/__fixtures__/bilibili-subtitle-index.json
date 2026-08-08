@@ -1,0 +1,16 @@
+{
+  "code": 0,
+  "message": "0",
+  "data": {
+    "subtitle": {
+      "subtitles": [
+        {
+          "lan": "zh-CN",
+          "lan_doc": "中文（简体）",
+          "subtitle_url": "//aisubtitle.hdslb.com/bfs/ai_subtitle/prod/12345/67890.json"
+        }
+      ],
+      "ai_subtitle": null
+    }
+  }
+}
