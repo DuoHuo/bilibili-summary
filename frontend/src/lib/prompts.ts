@@ -90,6 +90,29 @@ export const LEGACY_PROMPT = `你是一位擅长整理视频的助手。请根�
 - 全部使用简体中文
 `
 
+export const TIMESTAMP_CHUNK_SIZE = 50
+
+/**
+ * timestamp 分块校对 prompt：只含本块编号行，避免长字幕一次送入（超时/超 context）。
+ * 带行号（`1. 文本`），LLM 不易漏行，解析时按编号回填。
+ */
+export function buildTimestampChunkPrompt(title: string, numberedLines: string): string {
+  return `你是字幕校对助手。请对以下字幕片段做 1:1 逐行校对（这是完整字幕的一部分）。
+
+标题：${title}
+
+字幕（每行已编号，保持对齐）：
+${numberedLines}
+
+校对要求：
+1. 每行输入对应一行输出，不要合并、拆分、增删行
+2. 利用标题修正同音错字、专有名词；修正口误、错别字、标点
+3. 保持原意，不改变语气
+4. 全部转为简体中文
+
+输出：每行保持原编号（如 \`1. 修正后文本\`），行数与输入严格一致。不要解释、标题或额外内容。`
+}
+
 /** 解析指定模式对应的 prompt 文本。custom 模式空字符串回退到 SUMMARY_PROMPT。 */
 export function resolvePrompt(
   mode: PromptMode,

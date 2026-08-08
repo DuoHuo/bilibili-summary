@@ -9,6 +9,7 @@ import { SessionList } from "@/components/session-list"
 import { SettingsView, type SettingsTab } from "@/components/settings-panel"
 import { SpikeMark } from "@/components/spike-mark"
 import { UrlForm } from "@/components/url-form"
+import { DragRegion } from "@/components/window-drag-region"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -240,16 +241,13 @@ function App() {
 
       {/* ── 侧边栏 ── */}
       <aside className="glass-strong relative z-10 flex w-[232px] shrink-0 flex-col border-r border-hairline">
-        <div
-          data-tauri-drag-region
-          className={`h-12 shrink-0 select-none ${isMac ? "pl-[70px]" : ""}`}
-        />
-        <div data-tauri-drag-region className="flex select-none items-center gap-2 px-5 pb-5">
+        <DragRegion className={`h-12 shrink-0 select-none ${isMac ? "pl-[70px]" : ""}`} />
+        <DragRegion className="flex select-none items-center gap-2 px-5 pb-5">
           <SpikeMark className="size-4 text-ink" />
           <span className="font-serif text-base font-medium tracking-tight text-ink">
             bilibili summary
           </span>
-        </div>
+        </DragRegion>
 
         <nav className="flex flex-col gap-1 px-3">
           <SidebarButton
@@ -288,7 +286,7 @@ function App() {
 
       {/* ── 主工作区 ── */}
       <div className="relative z-10 flex min-w-0 flex-1 flex-col">
-        <div data-tauri-drag-region className="h-12 shrink-0 select-none" />
+        <DragRegion className="h-12 shrink-0 select-none" />
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {view === "settings" ? (

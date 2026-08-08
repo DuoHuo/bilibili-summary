@@ -1,5 +1,4 @@
 import type { TranscriptSegment, TranscriptSource } from "../types"
-import { formatTranscriptWithTimestamps } from "../transcript/format"
 
 /**
  * 剥离 Markdown 首行 `# 标题` 及其后的空行。
@@ -40,13 +39,20 @@ export function buildOutputMarkdown(input: {
   transcriptSegments: TranscriptSegment[]
 }): string {
   const summary = stripMarkdownTitle(input.summary)
+  // 不套固定「## 摘要」标题：LLM 内容直接跟在主标题下（不同模式内容形态各异）
   let markdown =
-    `# ${input.title}\n\n## 摘要\n\n${summary}\n\n## 视频信息\n\n` +
+    `# ${input.title}
+
+${summary}
+
+## 视频信息
+
+` +
     `- 视频地址: ${input.url}\n- 生成时间: ${input.time}`
 
   if (input.mode === "timestamp") {
-    const formatted = formatTranscriptWithTimestamps(input.transcriptSegments)
-    markdown += `\n\n## 字幕来源\n\n${formatTranscriptSource(input.transcriptSource)}\n\n## 字幕内容\n\n${formatted}`
+    // 正文已是合并后的时间戳字幕，不再重复输出「字幕内容」；仅保留来源标注
+    markdown += `\n\n## 字幕来源\n\n${formatTranscriptSource(input.transcriptSource)}`
   }
 
   return markdown

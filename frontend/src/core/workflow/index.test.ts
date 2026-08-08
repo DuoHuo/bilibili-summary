@@ -192,7 +192,7 @@ describe("generateMode（按模式懒生成）", () => {
     expect(output.summary).toBe(MAIN_SUMMARY)
     expect(output.transcript_source).toBe("subtitle")
     expect(output.markdown).toContain("# 【示例】B站视频标题：TypeScript 与 Tauri 入门")
-    expect(output.markdown).toContain("## 摘要")
+    expect(output.markdown).not.toContain("## 摘要")
     expect(output.markdown).toContain("## 视频信息")
     expect(output.markdown).toContain("- 生成时间: 2026-08-08 12:34:56")
 

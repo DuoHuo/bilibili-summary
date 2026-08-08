@@ -31,17 +31,17 @@ describe("buildOutputMarkdown", () => {
   it("summary 模式不含字幕小节", () => {
     const md = buildOutputMarkdown({ ...base, mode: "summary" })
     expect(md).toContain("# 示例视频")
-    expect(md).toContain("## 摘要")
+    expect(md).not.toContain("## 摘要")
     expect(md).toContain("## 视频信息")
     expect(md).toContain("- 视频地址: https://www.bilibili.com/video/BV1xx411c7mD")
     expect(md).toContain("- 生成时间: 2026-08-08 12:00:00")
     expect(md).not.toContain("## 字幕内容")
   })
 
-  it("timestamp 模式追加字幕来源与内容", () => {
+  it("timestamp 模式追加字幕来源，不重复输出字幕内容", () => {
     const md = buildOutputMarkdown({ ...base, mode: "timestamp" })
     expect(md).toContain("## 字幕来源\n\n官方字幕")
-    expect(md).toContain("## 字幕内容\n\n[00:01-00:03] 大家好\n[00:04-00:07] 欢迎收看")
+    expect(md).not.toContain("## 字幕内容")
   })
 })
 

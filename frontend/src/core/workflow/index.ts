@@ -16,6 +16,7 @@ import { fetchYoutubeSubtitles, fetchYoutubeTitle } from "../subtitle/youtube"
 import { formatTranscriptWithTimestamps } from "../transcript/format"
 import { mergeTranscriptSegments, TIMESTAMP_MERGE_THRESHOLD_SECS } from "../transcript/merge"
 import { buildPrompt } from "../llm/prompt"
+import { buildTimestampChunkPrompt, TIMESTAMP_CHUNK_SIZE } from "@/lib/prompts"
 import { callLlm } from "../llm/client"
 import { transcribeWithWhisper } from "../whisper"
 import { downloadVideoWithYtdlp } from "../whisper/download"
@@ -137,25 +138,43 @@ export async function generateMode(req: GenerateRequest, deps: SummarizeDeps): P
     screenshot: req.screenshot
   })
 
-  // 2. call_llm
+  // 2. call_llm（timestamp 走分块校对，不调用主生成；其余模式单次调用）
   scopedDeps.onProgress?.("llm")
-  const rawSummary = await callLlm(scopedDeps.http, req.api_key, req.model, req.base_url, prompt)
-
+  let rawSummary = ""
   let finalSegments: TranscriptSegment[] = req.transcript.segments
   let summaryText = rawSummary
   if (mode === "timestamp") {
-    // LLM 按行 1:1 修正字幕 → 与原 segment 时间戳对齐 → 15s 合并
-    const correctedLines = rawSummary
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line !== "")
+    // 分块 1:1 校对（长字幕防超时/超 context）：每块带行号调 LLM，按编号回填，缺失行回退原字幕
+    const lines = req.transcript.segments.map((s) => s.text)
+    const correctedByIndex = new Map<number, string>()
+    const CHUNK = TIMESTAMP_CHUNK_SIZE
+    for (let i = 0; i < lines.length; i += CHUNK) {
+      const chunkLines = lines.slice(i, i + CHUNK)
+      scopedDeps.onProgress?.("llm", `正在校对字幕 ${Math.min(i + CHUNK, lines.length)}/${lines.length} 行`)
+      const numbered = chunkLines.map((text, idx) => `${i + idx + 1}. ${text}`).join("\n")
+      const chunkPrompt = buildTimestampChunkPrompt(req.title, numbered)
+      const raw = await callLlm(scopedDeps.http, req.api_key, req.model, req.base_url, chunkPrompt, CHUNK * 48 + 256)
+      for (const line of raw.split("\n")) {
+        const m = /^\s*(\d+)[.、]\s*(.*)$/.exec(line)
+        if (m) {
+          const idx = parseInt(m[1], 10) - 1
+          if (idx >= 0 && idx < lines.length && m[2].trim() !== "") {
+            correctedByIndex.set(idx, m[2].trim())
+          }
+        }
+      }
+    }
+    const correctedLines = lines.map((text, idx) => correctedByIndex.get(idx) ?? text)
     const correctedSegments = req.transcript.segments.map((seg, index) => ({
       start: seg.start,
       end: seg.end,
-      text: correctedLines[index] ?? seg.text
+      text: correctedLines[index]
     }))
     finalSegments = mergeTranscriptSegments(correctedSegments, TIMESTAMP_MERGE_THRESHOLD_SECS)
     summaryText = formatTimestampSummary(finalSegments)
+  } else {
+    rawSummary = await callLlm(scopedDeps.http, req.api_key, req.model, req.base_url, prompt)
+    summaryText = rawSummary
   }
 
   // 3. render（Markdown 产物；HTML 功能已移除）

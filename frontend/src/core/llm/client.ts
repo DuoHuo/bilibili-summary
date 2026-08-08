@@ -28,16 +28,18 @@ export async function callLlm(
   apiKey: string,
   model: string | null,
   baseUrl: string | null,
-  prompt: string
+  prompt: string,
+  maxTokens?: number
 ): Promise<string> {
   const { endpoint, defaultModel } = resolveEndpoint(baseUrl)
-  const body = {
+  const body: Record<string, unknown> = {
     model: model ?? defaultModel,
     messages: [
       { role: "system", content: "你是专业视频内容总结助手" },
       { role: "user", content: prompt }
     ]
   }
+  if (maxTokens !== undefined) body.max_tokens = maxTokens
 
   const resp = await http(endpoint, {
     method: "POST",
