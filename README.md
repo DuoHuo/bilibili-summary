@@ -38,10 +38,8 @@ bilibili-summary/
 │       └── lib/              # tauri 桥接 / api / config / prompts / types
 ├── src-tauri/                # Tauri 2 Rust 壳
 │   ├── src/commands.rs       # run_external / save_file / 模型 / 产物目录
-│   ├── binaries/             # sidecar（yt-dlp/ffmpeg/whisper-cli，CD 阶段下载）
 │   └── tauri.conf.json
-├── scripts/fetch-binaries.sh # sidecar 二进制分发脚本（本地与 CI 共用）
-├── .github/workflows/        # ci.yml（三平台检查）+ release.yml（三平台打包发布）
+├── .github/workflows/        # release.yml（tag 触发的打包发布）
 ├── package.json              # 根 workspace（pnpm dev / build / test / clean）
 ├── pnpm-workspace.yaml       # workspace 配置（frontend）
 └── DESIGN.md                 # 设计系统规范
@@ -60,7 +58,7 @@ bilibili-summary/
 | whisper-cli | 本地转录（whisper.cpp） | 见下方说明 |
 
 > Windows 用户可用 `choco install yt-dlp ffmpeg`；Linux 用户用 `apt install yt-dlp ffmpeg`。
-> 开发期外部二进制走系统 PATH；**打包期**由 `scripts/fetch-binaries.sh` 统一拉取为 sidecar（无需本地安装）。
+> 外部二进制（yt-dlp / ffmpeg / whisper-cli）运行时按需下载到应用数据目录，不随包安装（设置页「引擎」Tab 可检测/下载）。
 
 Whisper 模型（`ggml-base.bin`）首次转录时自动下载到应用数据目录，无需手动准备。
 
@@ -71,7 +69,6 @@ pnpm install   # 首次：安装全部依赖（含 tauri CLI）
 pnpm dev       # 打开桌面窗口
 ```
 
-> `start.sh` 等价（自动检查依赖并启动）。
 
 ### 常用命令（根目录执行）
 
@@ -81,7 +78,6 @@ pnpm build           # 打包生成安装包（tauri build）
 pnpm test            # vitest 单元测试
 pnpm check           # tsc --noEmit + cargo check
 pnpm run clean        # 清理构建产物（frontend/dist + src-tauri/target）
-pnpm fetch-binaries  # 拉取 sidecar 二进制（打包前调用）
 ```
 
 ## 使用流程
@@ -94,15 +90,14 @@ pnpm fetch-binaries  # 拉取 sidecar 二进制（打包前调用）
 ## 外部二进制与打包（CD）
 
 - **开发期**：yt-dlp / ffmpeg / whisper-cli 从系统 PATH 查找。
-- **打包期**：`scripts/fetch-binaries.sh` 按 target-triple 下载三平台二进制到 `src-tauri/binaries/{name}-{target-triple}`（Tauri sidecar 机制），本地与 GitHub Actions 共用同一脚本。
-- **已知限制**：whisper.cpp 官方 releases 不提供 macOS arm64 预编译 CLI——该平台打包时需自行构建或 PATH 提供 whisper-cli（详见脚本注释）。
+- **运行期**：yt-dlp / ffmpeg / whisper-cli 首次使用时按需下载到应用数据目录（设置页「引擎」Tab 可检测 / 下载）。
+- **已知限制**：whisper.cpp 官方 releases 不提供 macOS arm64 预编译 CLI——macOS arm64 由 Homebrew（`brew install whisper-cpp`）提供。
 
 ## GitHub Actions
 
 | Workflow | 触发 | 内容 |
 | --- | --- | --- |
-| `ci.yml` | push / PR | 三平台（ubuntu/macos/windows）：pnpm test + build + cargo check |
-| `release.yml` | tag `v*` / 手动 | 三平台（含 macOS 双架构）打包 + sidecar 拉取 + GitHub Release 发布 |
+| `release.yml` | tag `v*` | 三平台（含 macOS 双架构）打包 + GitHub Release 发布 |
 
 打 tag 示例：
 

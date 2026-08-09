@@ -98,5 +98,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          cp "src-tauri/target/release/bilibili-summary.exe" \
+            "src-tauri/target/release/bilibili-summary-portable.exe"
           gh release upload "${{ github.ref_name }}" \
-            "src-tauri/target/release/bilibili-summary.exe" --clobber
+            "src-tauri/target/release/bilibili-summary-portable.exe" --clobber

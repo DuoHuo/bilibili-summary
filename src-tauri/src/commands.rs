@@ -112,7 +112,7 @@ fn extract_binary(tmp: &std::path::Path, program: &str, triple: &str) -> Result<
                     let name = entry.name().to_string();
                     let p = std::path::Path::new(&name);
                     if is_target(p) {
-                        let mut out = tmp.parent().unwrap_or(std::path::Path::new(".")).join(name);
+                        let out = tmp.parent().unwrap_or(std::path::Path::new(".")).join(name);
                         if let Some(parent) = out.parent() {
                             std::fs::create_dir_all(parent).ok();
                         }

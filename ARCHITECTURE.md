@@ -34,7 +34,7 @@ bilibili summary 是一个 **Tauri 2 桌面应用**（单窗口）：核心业�
 
 - `src/commands.rs`：`run_external`（sidecar/PATH 解析 + 进度事件）、`save_file`（原生另存为）、`ensure_whisper_model`、`resolve_output_dir`、文件读写
 - plugins：http（网络绕 CORS）、store（配置持久化）、dialog、opener
-- sidecar：yt-dlp / ffmpeg / whisper-cli（打包/CD 阶段由 `scripts/fetch-binaries.sh` 拉取）
+- 外部二进制：yt-dlp / ffmpeg / whisper-cli 运行时按需下载到应用数据目录（sidecar → PATH → 缓存 → 下载）
 
 ## 关键设计点
 

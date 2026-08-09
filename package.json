@@ -1,14 +1,13 @@
 {
   "name": "bilibili-summary",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "scripts": {
     "dev": "tauri dev",
     "build": "tauri build",
     "test": "pnpm --filter ./frontend test",
     "check": "pnpm --filter ./frontend check",
-    "clean": "pnpm --filter ./frontend run clean",
-    "fetch-binaries": "bash scripts/fetch-binaries.sh"
+    "clean": "pnpm --filter ./frontend run clean"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4"

@@ -44,6 +44,4 @@ frontend/dist/
 ref/
 output/
 models/
-# 预编译二进制镜像（由 third_party submodule 提供，不入主仓库）
-third_party/binaries/
 src-tauri/binaries/
