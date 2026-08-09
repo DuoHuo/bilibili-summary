@@ -23,9 +23,11 @@ jobs:
           - os: macos-latest
             target: x86_64-apple-darwin
             args: --target x86_64-apple-darwin
+            asset_arch: x64
           - os: macos-latest
             target: aarch64-apple-darwin
             args: --target aarch64-apple-darwin
+            asset_arch: aarch64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -78,3 +80,23 @@ jobs:
             src-tauri/target/release/bundle/**
             src-tauri/target/release/*.exe
           if-no-files-found: warn
+
+      # 删除 tauri-action 自动上传的 updater 压缩包（不需要 .app.tar.gz）
+      - name: Remove updater .app.tar.gz
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete-asset "${{ github.ref_name }}" \
+            "bilibili.summary_${{ matrix.asset_arch }}.app.tar.gz" --yes || echo "skip"
+
+      # 上传 Windows 便携版（裸 exe，双击即用，运行时按需下载二进制）
+      - name: Upload portable exe
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.ref_name }}" \
+            "src-tauri/target/release/bilibili-summary.exe" --clobber
