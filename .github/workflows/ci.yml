@@ -49,7 +49,7 @@ jobs:
         working-directory: frontend
 
       - name: Build frontend (vite)
-        run: pnpm build
+        run: pnpm exec vite build
         working-directory: frontend
 
       - uses: dtolnay/rust-toolchain@stable
