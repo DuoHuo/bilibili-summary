@@ -50,7 +50,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -58,7 +58,6 @@ jobs:
 
       - name: Install frontend deps
         run: pnpm install --frozen-lockfile
-        working-directory: frontend
 
       - name: Build & Release (Tauri)
         uses: tauri-apps/tauri-action@v0
