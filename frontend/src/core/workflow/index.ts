@@ -13,7 +13,6 @@ import { detectPlatform } from "../platform/detect"
 import { parseBilibiliId, parseYoutubeId } from "../platform/parse"
 import { fetchBilibiliMeta, fetchBilibiliSubtitles } from "../subtitle/bilibili"
 import { fetchYoutubeSubtitles, fetchYoutubeTitle } from "../subtitle/youtube"
-import { formatTranscriptWithTimestamps } from "../transcript/format"
 import { mergeTranscriptSegments, TIMESTAMP_MERGE_THRESHOLD_SECS } from "../transcript/merge"
 import { buildPrompt } from "../llm/prompt"
 import { buildTimestampChunkPrompt, TIMESTAMP_CHUNK_SIZE, TIMESTAMP_BATCH_CONCURRENCY } from "@/lib/prompts"
@@ -69,24 +68,38 @@ export async function prepareTranscript(
   scopedDeps.onProgress?.("detect")
   const platform = detectPlatform(req.url)
 
-  // 2. fetch_subtitle
-  scopedDeps.onProgress?.("fetch_subtitle")
+  // 2. fetch_subtitle（source=audio 时跳过，强制 whisper）
   let title: string
-  let transcript: Transcript | null
-  if (platform === "bilibili") {
-    const bvid = parseBilibiliId(req.url)
-    if (!bvid) throw new Error("无效的 B 站链接")
-    const meta = await fetchBilibiliMeta(scopedDeps.http, bvid)
-    title = meta.title
-    transcript = await fetchBilibiliSubtitles(scopedDeps.http, bvid, meta.cid, req.cookie)
+  let transcript: Transcript | null = null
+  if (req.source !== "audio") {
+    scopedDeps.onProgress?.("fetch_subtitle")
+    if (platform === "bilibili") {
+      const bvid = parseBilibiliId(req.url)
+      if (!bvid) throw new Error("无效的 B 站链接")
+      const meta = await fetchBilibiliMeta(scopedDeps.http, bvid)
+      title = meta.title
+      transcript = await fetchBilibiliSubtitles(scopedDeps.http, bvid, meta.cid, req.cookie)
+    } else {
+      const videoId = parseYoutubeId(req.url)
+      if (!videoId) throw new Error("无效的 YouTube 链接")
+      title = await fetchYoutubeTitle(scopedDeps.http, req.url)
+      transcript = await fetchYoutubeSubtitles(scopedDeps.http, videoId)
+    }
   } else {
-    const videoId = parseYoutubeId(req.url)
-    if (!videoId) throw new Error("无效的 YouTube 链接")
-    title = await fetchYoutubeTitle(scopedDeps.http, req.url)
-    transcript = await fetchYoutubeSubtitles(scopedDeps.http, videoId)
+    // 音频源：仍需要标题（用于产物与提示词），仅跳过字幕抓取
+    if (platform === "bilibili") {
+      const bvid = parseBilibiliId(req.url)
+      if (!bvid) throw new Error("无效的 B 站链接")
+      const meta = await fetchBilibiliMeta(scopedDeps.http, bvid)
+      title = meta.title
+    } else {
+      const videoId = parseYoutubeId(req.url)
+      if (!videoId) throw new Error("无效的 YouTube 链接")
+      title = await fetchYoutubeTitle(scopedDeps.http, req.url)
+    }
   }
 
-  // 3. whisper_transcribe（字幕缺失时兜底）
+  // 3. whisper_transcribe（字幕缺失或 source=audio 时）
   if (!transcript) {
     scopedDeps.onProgress?.("whisper")
     // 音频作为产物直接落盘到 run 目录（与摘要文件并列）
@@ -126,10 +139,9 @@ export async function generateMode(req: GenerateRequest, deps: SummarizeDeps): P
 
   // 1. build_prompt
   scopedDeps.onProgress?.("build_prompt")
-  const transcriptText =
-    mode === "timestamp"
-      ? req.transcript.segments.map((s) => s.text).join("\n")
-      : formatTranscriptWithTimestamps(req.transcript.segments)
+  // 发送给 LLM 前预处理：只取纯文本行（洗掉 [mm:ss-mm:ss] 时间戳前缀，不改内容）
+  // timestamp 模式本身走分块校对（纯文本行）；summary/fulltext/custom 统一同源
+  const transcriptText = req.transcript.segments.map((s) => s.text).join("\n")
   const prompt = buildPrompt({
     title: req.title,
     transcript: transcriptText,

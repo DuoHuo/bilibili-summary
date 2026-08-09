@@ -72,9 +72,28 @@ export function removeDir(path: string): Promise<void> {
   return invoke("remove_dir", { path })
 }
 
-/** 定位/下载 Whisper 模型。 */
-export function ensureWhisperModel(): Promise<string> {
-  return invoke("ensure_whisper_model")
+/** 按需下载外部二进制到应用数据目录（返回绝对路径）。 */
+export function ensureExternalBinary(program: string): Promise<string> {
+  return invoke("ensure_external_binary", { program })
+}
+
+/** 检测外部二进制可用性（不下载）：自定义路径 → sidecar → PATH → 缓存。 */
+export function checkExternalBinary(program: string, customPath?: string | null): Promise<{
+  available: boolean
+  path: string | null
+  error: string | null
+}> {
+  return invoke("check_external_binary", { program, customPath: customPath || null })
+}
+
+/** 检测 Whisper 模型是否已下载。 */
+export function checkWhisperModel(model: string): Promise<boolean> {
+  return invoke("check_whisper_model", { model })
+}
+
+/** 定位/下载 Whisper 模型（默认 base）。 */
+export function ensureWhisperModel(model?: string): Promise<string> {
+  return invoke("ensure_whisper_model", { model: model || null })
 }
 
 /** 原生另存为对话框并写入内容。 */

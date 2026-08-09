@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import { Clock, FileText, Home, Settings2, Sparkles, SquarePen, Trash2 } from "lucide-react"
+import { AudioLines, ChevronDown, Clock, FileText, Home, Settings2, Sparkles, SquarePen, Trash2 } from "lucide-react"
 import { toast, Toaster } from "sonner"
 
 import { CustomPromptDialog } from "@/components/custom-prompt-dialog"
@@ -11,6 +11,12 @@ import { SpikeMark } from "@/components/spike-mark"
 import { UrlForm } from "@/components/url-form"
 import { DragRegion } from "@/components/window-drag-region"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu"
 import {
   Dialog,
   DialogContent,
@@ -25,6 +31,7 @@ import { LEGACY_PROMPT, type PromptMode } from "@/lib/prompts"
 import type { BiliProfile, UserConfig } from "@/lib/types"
 import { useSessionManager } from "@/lib/sessions"
 import { testLlmConnection, type ProbeResult } from "@/lib/llmProbe"
+import { DEFAULT_STT_MODEL, findSttModel, STT_MODELS } from "@/lib/stt-models"
 import { tauriHttpFetch } from "@/lib/tauri"
 
 /** macOS Overlay 标题栏需为红绿灯按钮留出左侧空间 */
@@ -61,7 +68,9 @@ const DEFAULT_CONFIG: UserConfig = {
   cookie: "",
   sttLanguage: "zh-cn",
   screenshot: false,
-  biliProfile: null
+  biliProfile: null,
+  binaryPaths: {},
+  sttModel: DEFAULT_STT_MODEL
 }
 
 function App() {
@@ -305,7 +314,7 @@ function App() {
               <ModeResultTabs
                 session={activeSession}
                 initialMode={selectedMode}
-                onGenerate={(mode) => void generate(activeRunId!, mode)}
+                onGenerate={(mode, source) => void generate(activeRunId!, mode, source)}
                 onCancelMode={(mode) => void cancelMode(activeRunId!, mode)}
                 onEditCustom={() => setCustomPromptOpen(true)}
               />
@@ -328,6 +337,30 @@ function App() {
                   loading={false}
                   disabled={!url.trim() || !config.apiKey.trim()}
                 />
+
+                {/* STT 模型选择（无字幕转写用） */}
+                <div className="mt-3 flex items-center gap-2">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="secondary" size="sm">
+                        <AudioLines className="size-3.5" />
+                        转写模型：{findSttModel(config.sttModel).label}
+                        <ChevronDown className="size-3" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      {STT_MODELS.map((m) => (
+                        <DropdownMenuItem key={m.id} onClick={() => patchConfig({ sttModel: m.id })}>
+                          {m.label}
+                          <span className="ml-1 text-xs text-muted-soft">{m.size}</span>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <span className="text-xs text-muted-soft">
+                    无字幕时本地转写用 · {findSttModel(config.sttModel).size}
+                  </span>
+                </div>
               </div>
 
               <div className="mt-4 grid w-full gap-3 sm:grid-cols-2 lg:grid-cols-4">

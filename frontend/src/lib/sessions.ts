@@ -32,6 +32,8 @@ export interface SessionMeta {
   outputDir: string
   /** 准备阶段进度阶段（detect/fetch_subtitle/whisper）；完成后为 null */
   stage?: string | null
+  /** 转录来源（subtitle/whisper），重新生成选源时判断用 */
+  transcript_source?: "subtitle" | "whisper"
 }
 
 /** 模式中文名（动态文案用） */
@@ -79,6 +81,7 @@ export function isSessionMeta(value: unknown): value is SessionMeta {
     (record.error === undefined || typeof record.error === "string") &&
     typeof record.outputDir === "string" &&
     (record.stage === undefined || record.stage === null || typeof record.stage === "string") &&
+    (record.transcript_source === undefined || record.transcript_source === "subtitle" || record.transcript_source === "whisper") &&
     (record.modes === undefined || record.modes === null || typeof record.modes === "object")
   )
 }
@@ -170,6 +173,7 @@ interface UseSessionManagerOptions {
     promptMode: PromptMode
     cookie: string
     sttLanguage: "zh-cn" | "en"
+    sttModel: string
     screenshot: boolean
   }
 }
@@ -316,6 +320,7 @@ export function useSessionManager({ config }: UseSessionManagerOptions) {
             url,
             cookie: config.cookie.trim() || null,
             stt_language: config.sttLanguage,
+            stt_model: config.sttModel,
             run_id: runId
           },
           (stage) => {
@@ -325,7 +330,12 @@ export function useSessionManager({ config }: UseSessionManagerOptions) {
           }
         )
         const readySession: SessionMeta = { ...session, title: prepared.title, status: "ready", stage: null }
-        patchSession(runId, { title: prepared.title, status: "ready", stage: null })
+        patchSession(runId, {
+          title: prepared.title,
+          status: "ready",
+          stage: null,
+          transcript_source: prepared.transcript.source
+        })
         // 自动生成选中的模式（懒生成其他模式仍由 Tab 触发）
         if (autoMode) {
           await runGenerateMode(readySession, autoMode)
@@ -339,14 +349,54 @@ export function useSessionManager({ config }: UseSessionManagerOptions) {
     [config.cookie, config.sttLanguage, patchSession, runGenerateMode]
   )
 
-  /** 懒生成某模式（同一 session；重新生成 = 覆盖）。 */
+  /** 懒生成某模式；source 提供时先重新准备数据源（字幕/音频）再生成。 */
   const generate = useCallback(
-    (runId: string, mode: PromptMode) => {
+    async (runId: string, mode: PromptMode, source?: "subtitle" | "audio") => {
       const target = sessionsRef.current.find((s) => s.run_id === runId)
-      if (!target || target.status !== "ready") return Promise.resolve(null)
-      return runGenerateMode(target, mode)
+      if (!target || target.status === "preparing") return null
+
+      // 可选：重新准备数据源（覆盖 transcript）
+      if (source) {
+        patchSession(runId, { status: "preparing", stage: "detect" })
+        try {
+          const prepared = await runPrepare(
+            {
+              url: target.url,
+              cookie: config.cookie.trim() || null,
+              stt_language: config.sttLanguage,
+              stt_model: config.sttModel,
+              run_id: runId,
+              source
+            },
+            (stage) => {
+              setSessions((prev) =>
+                prev.map((s) => (s.run_id === runId && s.status === "preparing" ? { ...s, stage } : s))
+              )
+            }
+          )
+          // 覆盖结构化 transcript（供懒生成恢复）
+          await writeTextFile(
+            `${target.outputDir}/transcript_${runId}.json`,
+            JSON.stringify({ segments: prepared.transcript.segments, source: prepared.transcript.source })
+          )
+          patchSession(runId, {
+            status: "ready",
+            stage: null,
+            transcript_source: prepared.transcript.source
+          })
+        } catch (err) {
+          patchSession(runId, { status: "ready", stage: null })
+          const message = err instanceof Error ? err.message : String(err)
+          patchMode(runId, mode, { status: "error", error: message, finishedAt: Date.now() })
+          return null
+        }
+      }
+
+      const targetReady = sessionsRef.current.find((s) => s.run_id === runId)
+      if (!targetReady || targetReady.status !== "ready") return null
+      return runGenerateMode(targetReady, mode)
     },
-    [runGenerateMode]
+    [config, patchMode, patchSession, runGenerateMode]
   )
 
   /** 取消单模式生成。 */

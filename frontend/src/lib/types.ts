@@ -50,6 +50,10 @@ export interface UserConfig {
   screenshot: boolean
   /** B 站扫码登录的用户信息；null = 未登录。可选字段兼容旧配置。 */
   biliProfile: BiliProfile | null
+  /** 外部二进制自定义路径（yt-dlp/ffmpeg/whisper-cli），空串=自动检测 */
+  binaryPaths: Partial<Record<string, string>>
+  /** Whisper STT 模型（ggml-*.bin） */
+  sttModel: string
 }
 
 /** B 站登录用户信息（来自 nav 接口） */
@@ -78,6 +82,13 @@ function isValidBiliProfile(value: unknown): boolean {
   )
 }
 
+/** Allows missing `binaryPaths` (empty = auto-detect for all). */
+function isValidBinaryPaths(value: unknown): boolean {
+  if (value === undefined || value === null) return true
+  if (typeof value !== "object") return false
+  return Object.values(value as Record<string, unknown>).every((v) => typeof v === "string")
+}
+
 /**
  * Runtime guard for IndexedDB-persisted config. `promptMode` may be absent in
  * records written before the mode selector existed; callers merge with
@@ -95,6 +106,8 @@ export function isUserConfig(value: unknown): value is UserConfig {
     (record.sttLanguage === "zh-cn" || record.sttLanguage === "en") &&
     typeof record.screenshot === "boolean" &&
     isValidPromptMode(record.promptMode) &&
-    isValidBiliProfile(record.biliProfile)
+    isValidBiliProfile(record.biliProfile) &&
+    isValidBinaryPaths(record.binaryPaths) &&
+    (record.sttModel === undefined || typeof record.sttModel === "string")
   )
 }

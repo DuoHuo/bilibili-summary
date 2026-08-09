@@ -3,14 +3,23 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import {
   AlertCircle,
+  ChevronDown,
   ClipboardCopy,
   Download,
   ExternalLink,
-  Link2
+  Link2,
+  RefreshCw,
+  Volume2
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu"
 import { Separator } from "@/components/ui/separator"
 import {
   Tabs,
@@ -32,6 +41,12 @@ interface ResultPanelProps {
   onDownloadMarkdown: () => void
   onOpenOriginal: () => void
   onOpenOutput: () => void
+  /** 可选：done 态重新生成该模式（选数据源） */
+  onRerunSource?: (source: "subtitle" | "audio") => void
+  /** 无字幕（transcript_source=whisper）时禁用「由字幕生成」 */
+  subtitleDisabled?: boolean
+  /** 可选：播放 whisper 音频 */
+  onPlayAudio?: () => void
 }
 const SOURCE_LABEL: Record<NonNullable<TranscriptSource>, string> = {
   subtitle: "官方字幕",
@@ -47,7 +62,10 @@ export function ResultPanel({
   onCopyMarkdown,
   onDownloadMarkdown,
   onOpenOriginal,
-  onOpenOutput
+  onOpenOutput,
+  onRerunSource,
+  subtitleDisabled = false,
+  onPlayAudio
 }: ResultPanelProps) {
   const source = result?.transcript_source ?? null
 
@@ -96,9 +114,6 @@ export function ResultPanel({
                 {SOURCE_LABEL[source]}
               </Badge>
             )}
-            {result.run_id && (
-              <Badge variant="outline">run · {result.run_id.slice(0, 8)}</Badge>
-            )}
           </div>
           <h2 className="display-md text-ink">{result.title || "未命名视频"}</h2>
         </header>
@@ -112,6 +127,28 @@ export function ResultPanel({
             </TabsList>
 
             <div className="flex flex-wrap items-center gap-1">
+              {onRerunSource && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm">
+                      <RefreshCw className="size-3.5" />
+                      重新生成
+                      <ChevronDown className="size-3" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      disabled={subtitleDisabled}
+                      onClick={() => onRerunSource("subtitle")}
+                    >
+                      由字幕生成
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => onRerunSource("audio")}>
+                      由音频生成
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
               <Button variant="ghost" size="sm" onClick={onCopyMarkdown}>
                 <ClipboardCopy className="size-3.5" />
                 复制
@@ -130,6 +167,12 @@ export function ResultPanel({
                     <Link2 className="size-3.5" />
                     产物
                   </Button>
+                  {onPlayAudio && (
+                    <Button variant="ghost" size="sm" onClick={onPlayAudio}>
+                      <Volume2 className="size-3.5" />
+                      播放音频
+                    </Button>
+                  )}
                 </>
               )}
             </div>

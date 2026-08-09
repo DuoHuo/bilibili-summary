@@ -49,6 +49,8 @@ export interface PrepareRequest {
   cookie: string | null
   stt_language: "zh-cn" | "en"
   run_id?: string
+  /** 数据源：subtitle=字幕优先（缺失回退 whisper）；audio=强制音频转写 */
+  source?: "subtitle" | "audio"
 }
 
 /** 阶段二：按模式生成请求（懒触发） */

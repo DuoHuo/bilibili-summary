@@ -173,6 +173,17 @@ describe("prepareTranscript（字幕准备）", () => {
     expect(prepared.transcript.source).toBe("whisper")
   })
 
+  it("source=audio：有字幕也强制 whisper 转写", async () => {
+    const env = makeEnv({ hasSubtitle: true })
+    const prepared = await prepareTranscript(prepareInput({ source: "audio" }), env.deps)
+
+    // 跳过字幕抓取阶段，直接转写
+    expect(env.stages).not.toContain("fetch_subtitle")
+    expect(env.stages).toContain("whisper")
+    expect(env.runnerCalls.some((c) => c.program === "yt-dlp")).toBe(true)
+    expect(prepared.transcript.source).toBe("whisper")
+  })
+
   it("不支持的平台抛错", async () => {
     const env = makeEnv()
     await expect(prepareTranscript(prepareInput({ url: "https://vimeo.com/1" }), env.deps)).rejects.toThrow(

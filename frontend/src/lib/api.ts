@@ -17,6 +17,9 @@ export interface PreparePayload {
   cookie: string | null
   stt_language: "zh-cn" | "en"
   run_id?: string
+  source?: "subtitle" | "audio"
+  /** Whisper 模型（ggml-*.bin） */
+  stt_model?: string
 }
 
 export interface GeneratePayload {
@@ -64,9 +67,14 @@ export async function runPrepare(
         url: payload.url,
         cookie: payload.cookie,
         stt_language: payload.stt_language,
-        run_id: payload.run_id
+        run_id: payload.run_id,
+        source: payload.source
       } satisfies PrepareRequest,
-      { ...tauriDeps, onProgress }
+      {
+        ...tauriDeps,
+        resolveModelPath: () => ensureWhisperModel(payload.stt_model),
+        onProgress
+      }
     )
   } catch (err) {
     throw new SummarizeError(err instanceof Error ? err.message : String(err), "")

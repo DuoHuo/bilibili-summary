@@ -52,7 +52,164 @@ fn find_in_path(program: &str) -> Option<PathBuf> {
 }
 
 /// 解析外部二进制：sidecar 资源（非空） → PATH。
-fn resolve_program(app: &AppHandle, program: &str) -> Result<PathBuf, String> {
+/// 外部二进制下载 URL（按程序 + target-triple 映射）。
+fn external_binary_url(program: &str, triple: &str) -> Result<String, String> {
+    let gh = "https://github.com";
+    let url = match (program, triple) {
+        ("yt-dlp", "x86_64-apple-darwin" | "aarch64-apple-darwin") =>
+            format!("{gh}/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"),
+        ("yt-dlp", "x86_64-pc-windows-msvc") =>
+            format!("{gh}/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"),
+        ("yt-dlp", _) =>
+            format!("{gh}/yt-dlp/yt-dlp/releases/latest/download/yt-dlp"),
+        ("ffmpeg", "x86_64-apple-darwin" | "aarch64-apple-darwin") =>
+            "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip".to_string(),
+        ("ffmpeg", "x86_64-pc-windows-msvc") =>
+            format!("{gh}/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip"),
+        ("ffmpeg", _) =>
+            format!("{gh}/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.tar.xz"),
+        ("whisper-cli", "x86_64-apple-darwin") =>
+            format!("{gh}/ggml-org/whisper.cpp/releases/latest/download/whisper-bin-x64.zip"),
+        ("whisper-cli", "x86_64-pc-windows-msvc") =>
+            format!("{gh}/ggml-org/whisper.cpp/releases/latest/download/whisper-bin-Win32.zip"),
+        ("whisper-cli", "x86_64-unknown-linux-gnu") =>
+            format!("{gh}/ggml-org/whisper.cpp/releases/latest/download/whisper-bin-ubuntu-x64.tar.gz"),
+        ("whisper-cli", _) =>
+            return Err("whisper-cli 无官方 macOS arm64 预编译，请通过镜像仓库或源码构建提供".to_string()),
+        _ => return Err(format!("未知外部程序: {program}")),
+    };
+    Ok(url)
+}
+
+/// 从下载产物中提取目标二进制（zip / tar.xz / 单文件）。
+fn extract_binary(tmp: &std::path::Path, program: &str, triple: &str) -> Result<PathBuf, String> {
+    let exe_suffix = if triple.ends_with("-windows") { ".exe" } else { "" };
+    let names: &[&str] = if program == "whisper-cli" {
+        &["whisper-cli", "main"]
+    } else {
+        &[program]
+    };
+    let is_target = |p: &std::path::Path| -> bool {
+        let file = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        let stem = p.file_stem().and_then(|n| n.to_str()).unwrap_or("");
+        names.iter().any(|n| *n == file || *n == stem)
+            && (exe_suffix.is_empty() || file.ends_with(".exe"))
+            && !file.starts_with(".")
+    };
+
+    let ext = tmp
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    match ext.as_str() {
+        "zip" => {
+            let file = std::fs::File::open(tmp).map_err(|e| format!("打开下载包失败: {e}"))?;
+            let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("解析 zip 失败: {e}"))?;
+            for i in 0..archive.len() {
+                let mut entry = archive.by_index(i).map_err(|e| format!("读取 zip 失败: {e}"))?;
+                if entry.is_file() {
+                    let name = entry.name().to_string();
+                    let p = std::path::Path::new(&name);
+                    if is_target(p) {
+                        let mut out = tmp.parent().unwrap_or(std::path::Path::new(".")).join(name);
+                        if let Some(parent) = out.parent() {
+                            std::fs::create_dir_all(parent).ok();
+                        }
+                        let mut file = std::fs::File::create(&out).map_err(|e| format!("创建二进制失败: {e}"))?;
+                        std::io::copy(&mut entry, &mut file).map_err(|e| format!("写入二进制失败: {e}"))?;
+                        return Ok(out);
+                    }
+                }
+            }
+            Err("zip 中未找到目标二进制".to_string())
+        }
+        "xz" => {
+            let file = std::fs::File::open(tmp).map_err(|e| format!("打开下载包失败: {e}"))?;
+            let decoder = xz2::read::XzDecoder::new(file);
+            let mut archive = tar::Archive::new(decoder);
+            let entries = archive.entries().map_err(|e| format!("解析 tar.xz 失败: {e}"))?;
+            for entry in entries {
+                let mut entry = entry.map_err(|e| format!("读取 tar.xz 失败: {e}"))?;
+                let p = entry.path().map(|p| p.into_owned()).unwrap_or_default();
+                if is_target(&p) {
+                    let name = p.to_string_lossy().into_owned();
+                    let out = tmp.parent().unwrap_or(std::path::Path::new(".")).join(name);
+                    if let Some(parent) = out.parent() {
+                        std::fs::create_dir_all(parent).ok();
+                    }
+                    entry.unpack(&out).map_err(|e| format!("解压二进制失败: {e}"))?;
+                    return Ok(out);
+                }
+            }
+            Err("tar.xz 中未找到目标二进制".to_string())
+        }
+        _ => Ok(tmp.to_path_buf()), // 单文件
+    }
+}
+
+/// 按需下载外部二进制到应用数据目录（持久，一次下载多次复用）。
+#[tauri::command]
+pub async fn ensure_external_binary(app: AppHandle, program: String) -> Result<String, String> {
+    // macOS 平台的 whisper-cli：官方分发走 Homebrew（brew install whisper-cpp），提供 whisper-cli 到 PATH
+    #[cfg(target_os = "macos")]
+    if program == "whisper-cli" {
+        if let Some(found) = find_in_path("whisper-cli") {
+            return Ok(found.to_string_lossy().to_string());
+        }
+        let status = Command::new("brew")
+            .args(["install", "whisper-cpp"])
+            .status()
+            .await
+            .map_err(|e| format!("调用 Homebrew 失败（请确认已安装 brew）: {e}"))?;
+        if !status.success() {
+            return Err("Homebrew 安装 whisper-cpp 失败，请检查网络或手动安装".to_string());
+        }
+        return find_in_path("whisper-cli")
+            .map(|p| p.to_string_lossy().to_string())
+            .ok_or_else(|| "whisper-cli 安装后未出现在 PATH，请刷新终端后重试".to_string());
+    }
+
+    let triple = target_triple();
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let bin_dir = data_dir.join("binaries");
+    std::fs::create_dir_all(&bin_dir).map_err(|e| format!("创建二进制目录失败: {e}"))?;
+    let exe_suffix = if triple.ends_with("-windows") { ".exe" } else { "" };
+    let dest = bin_dir.join(format!("{program}-{triple}{exe_suffix}"));
+    let valid = dest.is_file() && dest.metadata().map(|m| m.len() > 0).unwrap_or(false);
+    if valid {
+        return Ok(dest.to_string_lossy().to_string());
+    }
+
+    let url = external_binary_url(&program, &triple)?;
+    let tmp = bin_dir.join(format!(".dl-{program}"));
+    let response = reqwest::Client::new()
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("下载 {program} 失败: {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!("下载 {program} 失败（HTTP {}）", response.status()));
+    }
+    let bytes = response.bytes().await.map_err(|e| format!("读取 {program} 下载失败: {e}"))?;
+    tokio::fs::write(&tmp, &bytes)
+        .await
+        .map_err(|e| format!("保存 {program} 失败: {e}"))?;
+
+    let extracted = extract_binary(&tmp, &program, &triple).map_err(|e| format!("{program}: {e}"))?;
+    std::fs::rename(&extracted, &dest).map_err(|e| format!("移动 {program} 失败: {e}"))?;
+    let _ = std::fs::remove_file(&tmp);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o755));
+    }
+
+    Ok(dest.to_string_lossy().to_string())
+}
+
+/// 解析外部二进制：sidecar 资源 → PATH → 应用数据目录 → 按需下载。
+async fn resolve_program(app: &AppHandle, program: &str) -> Result<PathBuf, String> {
     let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
     let sidecar = resource_dir
         .join("binaries")
@@ -64,7 +221,24 @@ fn resolve_program(app: &AppHandle, program: &str) -> Result<PathBuf, String> {
     if sidecar_valid {
         return Ok(sidecar);
     }
-    find_in_path(program).ok_or_else(|| format!("调用 {program} 失败，请确认已安装"))
+    // dev 模式：externalBin 直接复制到 resource_dir/{program}（无 binaries/ 目录与后缀）
+    #[cfg(debug_assertions)]
+    {
+        let dev_sidecar = resource_dir.join(program);
+        let dev_valid = dev_sidecar
+            .is_file()
+            && dev_sidecar.metadata().map(|m| m.len() > 0).unwrap_or(false);
+        if dev_valid {
+            return Ok(dev_sidecar);
+        }
+    }
+    if let Some(found) = find_in_path(program) {
+        return Ok(found);
+    }
+    // 按需下载到应用数据目录
+    ensure_external_binary(app.clone(), program.to_string())
+        .await
+        .map(PathBuf::from)
 }
 
 #[derive(Serialize)]
@@ -94,7 +268,7 @@ pub async fn run_external(
     app: AppHandle,
     req: RunExternalRequest,
 ) -> Result<ExternalRunResult, String> {
-    let program_path = resolve_program(&app, &req.program)?;
+    let program_path = resolve_program(&app, &req.program).await?;
 
     let mut command = Command::new(&program_path);
     command.args(&req.args);
@@ -210,16 +384,21 @@ pub async fn run_external(
 
 /// 定位 / 下载 Whisper 模型到应用数据目录。
 #[tauri::command]
-pub async fn ensure_whisper_model(app: AppHandle) -> Result<String, String> {
+pub async fn ensure_whisper_model(app: AppHandle, model: Option<String>) -> Result<String, String> {
+    // 默认 base；仅允许已知模型名，防路径注入
+    let model = model.unwrap_or_else(|| "ggml-base.bin".to_string());
+    if !model.starts_with("ggml-") || !model.ends_with(".bin") {
+        return Err(format!("无效的 Whisper 模型名: {model}"));
+    }
     let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let model_dir = data_dir.join("models");
     std::fs::create_dir_all(&model_dir).map_err(|e| format!("创建模型目录失败: {e}"))?;
-    let model_path = model_dir.join("ggml-base.bin");
+    let model_path = model_dir.join(&model);
     if model_path.exists() {
         return Ok(model_path.to_string_lossy().to_string());
     }
 
-    let url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin";
+    let url = format!("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{model}");
     let response = reqwest::Client::new()
         .get(url)
         .send()
@@ -343,4 +522,120 @@ mod remove_dir_tests {
         let dir = std::env::temp_dir().join("definitely-missing-session-xyz");
         remove_dir(dir.to_string_lossy().to_string()).unwrap();
     }
+}
+
+#[cfg(test)]
+mod external_binary_tests {
+    use super::{external_binary_url, extract_binary};
+    use std::fs;
+    use std::io::Write;
+
+    #[test]
+    fn url_mapping_covers_platforms() {
+        // yt-dlp 各平台
+        assert!(external_binary_url("yt-dlp", "aarch64-apple-darwin").unwrap().contains("yt-dlp_macos"));
+        assert!(external_binary_url("yt-dlp", "x86_64-pc-windows-msvc").unwrap().ends_with(".exe"));
+        assert!(external_binary_url("yt-dlp", "x86_64-unknown-linux-gnu").unwrap().ends_with("/yt-dlp"));
+        // ffmpeg
+        assert!(external_binary_url("ffmpeg", "aarch64-apple-darwin").unwrap().contains("evermeet"));
+        assert!(external_binary_url("ffmpeg", "x86_64-unknown-linux-gnu").unwrap().contains("linux64"));
+        // whisper mac-arm64 无官方 → Err
+        assert!(external_binary_url("whisper-cli", "aarch64-apple-darwin").is_err());
+        assert!(external_binary_url("whisper-cli", "x86_64-apple-darwin").is_ok());
+    }
+
+    #[test]
+    fn extract_single_file_passthrough() {
+        let dir = std::env::temp_dir().join(format!("extract-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("yt-dlp_macos");
+        fs::write(&f, b"binary").unwrap();
+        let out = extract_binary(&f, "yt-dlp", "aarch64-apple-darwin").unwrap();
+        assert_eq!(out, f);
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn extract_from_zip() {
+        let dir = std::env::temp_dir().join(format!("extract-zip-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let zip_path = dir.join("pkg.zip");
+        let file = fs::File::create(&zip_path).unwrap();
+        let mut zw = zip::ZipWriter::new(file);
+        zw.start_file("bin/whisper-cli", zip::write::SimpleFileOptions::default()).unwrap();
+        zw.write_all(b"whisper-binary").unwrap();
+        zw.finish().unwrap();
+
+        let out = extract_binary(&zip_path, "whisper-cli", "aarch64-apple-darwin").unwrap();
+        assert_eq!(fs::read(&out).unwrap(), b"whisper-binary");
+        fs::remove_dir_all(&dir).ok();
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BinaryStatus {
+    available: bool,
+    path: Option<String>,
+    error: Option<String>,
+}
+
+fn is_valid_bin(path: &std::path::Path) -> bool {
+    path.is_file() && path.metadata().map(|m| m.len() > 0).unwrap_or(false)
+}
+
+/// 检测外部二进制可用性（不触发下载）：自定义路径 → sidecar → PATH → 应用数据目录。
+#[tauri::command]
+pub fn check_external_binary(app: AppHandle, program: String, custom_path: Option<String>) -> BinaryStatus {
+    let check = |p: &str| -> Option<String> {
+        let path = std::path::Path::new(p);
+        if is_valid_bin(path) { Some(p.to_string()) } else { None }
+    };
+
+    // 1. 自定义路径
+    if let Some(p) = custom_path {
+        let t = p.trim();
+        if !t.is_empty() {
+            if let Some(found) = check(t) {
+                return BinaryStatus { available: true, path: Some(found), error: None };
+            }
+            return BinaryStatus { available: false, path: None, error: Some("自定义路径无效".to_string()) };
+        }
+    }
+
+    // 2. sidecar（打包资源）
+    let resource_dir = app.path().resource_dir().ok();
+    if let Some(dir) = resource_dir {
+        let sidecar = dir.join("binaries").join(format!("{program}-{}", target_triple()));
+        if is_valid_bin(&sidecar) {
+            return BinaryStatus { available: true, path: Some(sidecar.to_string_lossy().to_string()), error: None };
+        }
+    }
+
+    // 3. PATH
+    if let Some(found) = find_in_path(&program) {
+        return BinaryStatus { available: true, path: Some(found.to_string_lossy().to_string()), error: None };
+    }
+
+    // 4. 应用数据目录（按需下载缓存）
+    if let Ok(data_dir) = app.path().app_data_dir() {
+        let exe = if target_triple().ends_with("-windows") { ".exe" } else { "" };
+        let cached = data_dir.join("binaries").join(format!("{program}-{}{}", target_triple(), exe));
+        if is_valid_bin(&cached) {
+            return BinaryStatus { available: true, path: Some(cached.to_string_lossy().to_string()), error: None };
+        }
+    }
+
+    BinaryStatus { available: false, path: None, error: None }
+}
+
+/// 检测 Whisper 模型是否已下载到本地（不触发下载）。
+#[tauri::command]
+pub fn check_whisper_model(app: AppHandle, model: String) -> Result<bool, String> {
+    if !model.starts_with("ggml-") || !model.ends_with(".bin") {
+        return Ok(false);
+    }
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let path = data_dir.join("models").join(&model);
+    Ok(path.is_file() && path.metadata().map(|m| m.len() > 0).unwrap_or(false))
 }

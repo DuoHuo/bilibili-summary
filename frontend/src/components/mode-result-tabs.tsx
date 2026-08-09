@@ -1,14 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { convertFileSrc } from "@tauri-apps/api/core"
-import { Loader2, Pencil, RefreshCw, XCircle } from "lucide-react"
+import { Loader2, Pencil, XCircle } from "lucide-react"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { ResultPanel } from "@/components/result-panel"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { stripMarkdownTitle } from "@/core/render/markdown"
+import { buildWhisperAudioName } from "@/core/whisper/audio"
 import type { PromptMode } from "@/lib/prompts"
 import type { SummarizeResult } from "@/lib/types"
 import { describeSessionState, readModeOutput, type SessionMeta } from "@/lib/sessions"
+import { pathIsFile } from "@/lib/tauri"
 
 const MODE_LABEL: Record<PromptMode, string> = {
   summary: "摘要",
@@ -23,7 +33,7 @@ interface ModeResultTabsProps {
   session: SessionMeta
   /** 初始激活的 Tab（来自首页模式卡片选择） */
   initialMode?: PromptMode
-  onGenerate: (mode: PromptMode) => void
+  onGenerate: (mode: PromptMode, source?: "subtitle" | "audio") => void
   onCancelMode: (mode: PromptMode) => void
   onEditCustom: () => void
 }
@@ -41,6 +51,9 @@ export function ModeResultTabs({
 }: ModeResultTabsProps) {
   const [activeMode, setActiveMode] = useState<PromptMode>(initialMode)
   const [markdown, setMarkdown] = useState<string | null>(null)
+  // 音频播放：whisper 产物 .wav（asset 协议加载）
+  const [audioSrc, setAudioSrc] = useState<string | null>(null)
+  const [audioOpen, setAudioOpen] = useState(false)
 
   const entry = session.modes[activeMode]
 
@@ -105,9 +118,23 @@ export function ModeResultTabs({
     void import("@/lib/tauri").then(({ openPath }) => openPath(session.outputDir))
   }, [session.outputDir])
 
+  // 播放音频（whisper 产物 .wav；字幕源任务无音频）
+  const handlePlayAudio = useCallback(async () => {
+    const wavPath = `${session.outputDir}/${buildWhisperAudioName(session.url)}.wav`
+    const exists = await pathIsFile(wavPath).catch(() => false)
+    if (!exists) {
+      toast.info("该任务没有音频文件（可能使用了字幕源）")
+      return
+    }
+    setAudioSrc(convertFileSrc(wavPath))
+    setAudioOpen(true)
+  }, [session])
+
   return (
-    <Tabs value={activeMode} onValueChange={(v) => setActiveMode(v as PromptMode)} className="w-full">
-      <TabsList>
+    <>
+      <Tabs value={activeMode} onValueChange={(v) => setActiveMode(v as PromptMode)} className="w-full">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <TabsList>
         {TAB_ORDER.map((mode) => {
           const status = session.modes[mode]?.status ?? "pending"
           const active = activeMode === mode
@@ -119,7 +146,8 @@ export function ModeResultTabs({
             </TabsTrigger>
           )
         })}
-      </TabsList>
+        </TabsList>
+      </div>
 
       {TAB_ORDER.map((mode) => (
         <TabsContent key={mode} value={mode}>
@@ -135,10 +163,16 @@ export function ModeResultTabs({
             onDownload={handleDownload}
             onOpenOriginal={handleOpenOriginal}
             onOpenOutput={handleOpenOutput}
+            onPlayAudio={() => void handlePlayAudio()}
+            onRerunSource={(source) => void onGenerate(mode, source)}
+            subtitleDisabled={session.transcript_source === "whisper"}
           />
         </TabsContent>
       ))}
-    </Tabs>
+      </Tabs>
+
+      <AudioDialog open={audioOpen} onOpenChange={setAudioOpen} src={audioSrc} />
+    </>
   )
 }
 
@@ -153,7 +187,10 @@ function ModeBody({
   onCopyMarkdown,
   onDownload,
   onOpenOriginal,
-  onOpenOutput
+  onOpenOutput,
+  onPlayAudio,
+  onRerunSource,
+  subtitleDisabled
 }: {
   session: SessionMeta
   mode: PromptMode
@@ -166,6 +203,9 @@ function ModeBody({
   onDownload: () => void
   onOpenOriginal: () => void
   onOpenOutput: () => void
+  onPlayAudio: () => void
+  onRerunSource: (source: "subtitle" | "audio") => void
+  subtitleDisabled: boolean
 }) {
   const entry = session.modes[mode]
   const label = MODE_LABEL[mode]
@@ -211,25 +251,20 @@ function ModeBody({
 
   if (entry?.status === "done" && result) {
     return (
-      <div className="flex flex-col gap-3">
-        <div className="flex justify-end">
-          <Button variant="ghost" size="sm" onClick={onGenerate}>
-            <RefreshCw className="size-3.5" />
-            重新生成
-          </Button>
-        </div>
-        <ResultPanel
-          result={result}
-          error=""
-          loading={false}
-          normalizedMarkdown={normalizedMarkdown}
-          mode={mode}
-          onCopyMarkdown={onCopyMarkdown}
-          onDownloadMarkdown={onDownload}
-          onOpenOriginal={onOpenOriginal}
-          onOpenOutput={onOpenOutput}
-        />
-      </div>
+      <ResultPanel
+        result={result}
+        error=""
+        loading={false}
+        normalizedMarkdown={normalizedMarkdown}
+        mode={mode}
+        onCopyMarkdown={onCopyMarkdown}
+        onDownloadMarkdown={onDownload}
+        onOpenOriginal={onOpenOriginal}
+        onOpenOutput={onOpenOutput}
+        onRerunSource={onRerunSource}
+        subtitleDisabled={subtitleDisabled}
+        onPlayAudio={onPlayAudio}
+      />
     )
   }
 
@@ -249,5 +284,20 @@ function ModeBody({
         </div>
       </div>
     </div>
+  )
+}
+
+/** 音频播放对话框：whisper 产物 .wav 经 asset 协议播放。 */
+function AudioDialog({ open, onOpenChange, src }: { open: boolean; onOpenChange: (v: boolean) => void; src: string | null }) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>播放音频</DialogTitle>
+          <DialogDescription>Whisper 转写用音频（产物目录 .wav）。</DialogDescription>
+        </DialogHeader>
+        {src && <audio controls autoPlay src={src} className="w-full" />}
+      </DialogContent>
+    </Dialog>
   )
 }

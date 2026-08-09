@@ -1,17 +1,23 @@
-import { useState, type ReactNode } from "react"
+import { useCallback, useEffect, useState, type ReactNode } from "react"
 
 import {
+  AudioLines,
   Camera,
+  CheckCircle2,
   Cookie,
+  Download,
   Globe,
   KeyRound,
   Languages,
   Loader2,
   LogOut,
   PlugZap,
+  RefreshCw,
   Sparkles,
-  UserRound
+  UserRound,
+  Wrench
 } from "lucide-react"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,8 +27,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import type { BiliProfile, UserConfig } from "@/lib/types"
 import type { ProbeResult } from "@/lib/llmProbe"
+import { STT_MODELS } from "@/lib/stt-models"
+import { checkExternalBinary, checkWhisperModel, ensureExternalBinary, ensureWhisperModel } from "@/lib/tauri"
 
-export type SettingsTab = "account" | "model" | "processing"
+export type SettingsTab = "account" | "model" | "processing" | "engine"
 
 interface SettingsViewProps {
   config: UserConfig
@@ -71,6 +79,7 @@ export function SettingsView({
           <TabsTrigger value="account">账号</TabsTrigger>
           <TabsTrigger value="model">模型</TabsTrigger>
           <TabsTrigger value="processing">内容处理</TabsTrigger>
+          <TabsTrigger value="engine">引擎</TabsTrigger>
         </TabsList>
 
         <TabsContent value="account">
@@ -198,6 +207,8 @@ export function SettingsView({
                 )}
               </div>
             </Section>
+
+            <SttModelsTab config={config} onChange={onChange} />
           </div>
         </TabsContent>
 
@@ -240,6 +251,12 @@ export function SettingsView({
                 />
               </ToggleRow>
             </Section>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="engine">
+          <div className="glass card-shadow flex flex-col gap-8 rounded-2xl border border-hairline p-8">
+            <EngineTab config={config} onChange={onChange} />
           </div>
         </TabsContent>
       </Tabs>
@@ -292,5 +309,173 @@ function ToggleRow({
       </div>
       {children}
     </div>
+  )
+}
+
+/** 引擎检测：项目所需外部二进制（非模型）——手动路径 / 检测 / 按需下载。 */
+const ENGINE_BINARIES: ReadonlyArray<{ program: string; label: string; description: string }> = [
+  { program: "yt-dlp", label: "yt-dlp", description: "视频 / 音频下载" },
+  { program: "ffmpeg", label: "ffmpeg", description: "音频转码 / 截图抽帧" },
+  { program: "whisper-cli", label: "whisper-cli", description: "本地语音转写" }
+]
+
+interface EngineState {
+  available: boolean
+  path: string | null
+  error: string | null
+  checking: boolean
+  downloading: boolean
+}
+
+function EngineTab({ config, onChange }: { config: UserConfig; onChange: (patch: Partial<UserConfig>) => void }) {
+  const [states, setStates] = useState<Partial<Record<string, EngineState>>>({})
+
+  const checkOne = useCallback(
+    async (program: string) => {
+      setStates((prev) => ({ ...prev, [program]: { ...prev[program], checking: true } as EngineState }))
+      const res = await checkExternalBinary(program, config.binaryPaths?.[program])
+      setStates((prev) => ({
+        ...prev,
+        [program]: { available: res.available, path: res.path, error: res.error, checking: false, downloading: false }
+      }))
+    },
+    [config.binaryPaths]
+  )
+
+  // 进入时全量检测
+  useEffect(() => {
+    for (const b of ENGINE_BINARIES) void checkOne(b.program)
+  }, [checkOne])
+
+  const handleDownload = useCallback(
+    async (program: string) => {
+      setStates((prev) => ({ ...prev, [program]: { ...prev[program], downloading: true } as EngineState }))
+      try {
+        const path = await ensureExternalBinary(program)
+        // 下载成功：清除手动路径覆盖，使用自动定位
+        onChange({ binaryPaths: { ...config.binaryPaths, [program]: "" } })
+        toast.success(`${program} 已就绪`, { description: path })
+      } catch (err) {
+        toast.error(`${program} 下载失败`, { description: err instanceof Error ? err.message : String(err) })
+      } finally {
+        await checkOne(program)
+      }
+    },
+    [checkOne, config.binaryPaths, onChange]
+  )
+
+  return (
+    <Section title="引擎" icon={Wrench}>
+      {ENGINE_BINARIES.map((bin) => {
+        const state = states[bin.program]
+        const customPath = config.binaryPaths?.[bin.program] ?? ""
+        return (
+          <div key={bin.program} className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              {state?.checking ? (
+                <Loader2 className="size-3.5 animate-spin text-muted" />
+              ) : state?.available ? (
+                <CheckCircle2 className="size-3.5 text-success" />
+              ) : (
+                <span className="size-3.5 rounded-full bg-error/70" />
+              )}
+              <span className="text-sm font-medium text-ink">{bin.label}</span>
+              <span className="text-xs text-muted-soft">{bin.description}</span>
+              <span className="ml-auto text-xs text-muted-soft">
+                {state?.path ?? (state?.error || "未检测到")}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Input
+                className="h-8 flex-1 text-xs"
+                placeholder="留空自动检测；或输入自定义路径"
+                spellCheck={false}
+                value={customPath}
+                onChange={(e) => onChange({ binaryPaths: { ...config.binaryPaths, [bin.program]: e.target.value } })}
+              />
+              <Button variant="secondary" size="sm" onClick={() => void checkOne(bin.program)} disabled={state?.checking}>
+                <RefreshCw className="size-3.5" />
+                检测
+              </Button>
+              <Button size="sm" onClick={() => void handleDownload(bin.program)} disabled={state?.downloading}>
+                {state?.downloading ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+                下载
+              </Button>
+            </div>
+          </div>
+        )
+      })}
+    </Section>
+  )
+}
+
+/** STT 模型管理：选择 + 大小标注 + 状态 + 按需下载。 */
+function SttModelsTab({ config, onChange }: { config: UserConfig; onChange: (patch: Partial<UserConfig>) => void }) {
+  const [states, setStates] = useState<Partial<Record<string, { available: boolean; checking: boolean; downloading: boolean }>>>({})
+
+  const refresh = useCallback(async () => {
+    for (const m of STT_MODELS) {
+      setStates((prev) => ({ ...prev, [m.id]: { ...prev[m.id], checking: true } as never }))
+      const available = await checkWhisperModel(m.id).catch(() => false)
+      setStates((prev) => ({ ...prev, [m.id]: { available, checking: false, downloading: false } }))
+    }
+  }, [])
+
+  useEffect(() => {
+    void refresh()
+  }, [refresh])
+
+  const handleDownload = useCallback(
+    async (modelId: string) => {
+      setStates((prev) => ({ ...prev, [modelId]: { ...prev[modelId], downloading: true } as never }))
+      try {
+        await ensureWhisperModel(modelId)
+        toast.success(`模型 ${modelId} 下载完成`)
+      } catch (err) {
+        toast.error(`模型 ${modelId} 下载失败`, { description: err instanceof Error ? err.message : String(err) })
+      } finally {
+        await refresh()
+      }
+    },
+    [refresh]
+  )
+
+  return (
+    <Section title="语音转写 (STT)" icon={AudioLines}>
+      {STT_MODELS.map((m) => {
+        const st = states[m.id]
+        const selected = config.sttModel === m.id
+        return (
+          <div key={m.id} className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => onChange({ sttModel: m.id })}
+              className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${
+                selected ? "border-primary/60 bg-surface-card" : "border-hairline hover:bg-surface-soft"
+              }`}
+            >
+              <span className={`size-1.5 shrink-0 rounded-full ${selected ? "bg-primary" : "bg-hairline"}`} />
+              <span className="text-sm font-medium text-ink">{m.label}</span>
+              <span className="text-xs text-muted-soft">{m.size} · {m.description}</span>
+              <span className="ml-auto text-xs">
+                {st?.checking ? (
+                  <Loader2 className="size-3 animate-spin text-muted" />
+                ) : st?.available ? (
+                  <span className="text-success">已下载</span>
+                ) : (
+                  <span className="text-muted-soft">未下载</span>
+                )}
+              </span>
+            </button>
+            {!st?.available && (
+              <Button size="sm" onClick={() => void handleDownload(m.id)} disabled={st?.downloading}>
+                {st?.downloading ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+                下载
+              </Button>
+            )}
+          </div>
+        )
+      })}
+    </Section>
   )
 }

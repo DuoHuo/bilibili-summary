@@ -17,7 +17,20 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="${SCRIPT_DIR}/../src-tauri/binaries"
+MIRROR_DIR="${SCRIPT_DIR}/../third_party/binaries"   # 预编译镜像 submodule（可选）
 mkdir -p "${BIN_DIR}"
+
+# 从预编译镜像 submodule 复制（存在则用，否则返回 1 走下载/构建回退）
+mirror_copy() {
+  local name="$1"
+  local src="${MIRROR_DIR}/${name}-${TARGET_TRIPLE}${EXE_SUFFIX}"
+  if [ -f "${src}" ] && [ -s "${src}" ]; then
+    echo "  📦 从镜像复制: ${name}"
+    install -m 0755 "${src}" "${BIN_DIR}/${name}-${TARGET_TRIPLE}${EXE_SUFFIX}"
+    return 0
+  fi
+  return 1
+}
 
 HOST_TRIPLE="$(rustc -vV 2>/dev/null | sed -n 's/^host: //p' || true)"
 TARGET_TRIPLE="${1:-${HOST_TRIPLE:-x86_64-unknown-linux-gnu}}"
@@ -50,14 +63,14 @@ case "${TARGET_TRIPLE}" in
     EXE_SUFFIX=".exe"
     ;;
   x86_64-apple-darwin)
-    FFMPEG_ASSET="ffmpeg-master-latest-macos64-gpl.tar.xz"
+    FFMPEG_ASSET=""   # macOS 无 BtbN 静态构建；ffmpeg 由 PATH（homebrew）提供
     WHISPER_ASSET="whisper-bin-x64.zip"
     YTDLP_ASSET="yt-dlp_macos"
     EXE_SUFFIX=""
     ;;
   aarch64-apple-darwin)
-    FFMPEG_ASSET="ffmpeg-master-latest-macos64-gpl.tar.xz"  # macOS arm64 跑 x64 静态构建经 Rosetta 或原生？BtbN 无 arm64 mac 静态包
-    WHISPER_ASSET=""   # 无官方预编译；需源码构建或 PATH
+    FFMPEG_ASSET=""   # macOS 无 BtbN 静态构建；ffmpeg 由 PATH（homebrew）提供
+    WHISPER_ASSET=""   # 无官方预编译；从 submodule 源码构建
     YTDLP_ASSET="yt-dlp_macos"
     EXE_SUFFIX=""
     ;;
@@ -79,7 +92,9 @@ download() {
 }
 
 # ---------- yt-dlp（单文件可执行） ----------
-if [ -n "${YTDLP_ASSET}" ]; then
+if mirror_copy yt-dlp; then
+  :
+elif [ -n "${YTDLP_ASSET}" ]; then
   echo "📦 yt-dlp"
   YTDLP_TMP="${BIN_DIR}/.ytdlp-dl"
   download "https://github.com/yt-dlp/yt-dlp/releases/latest/download/${YTDLP_ASSET}" "${YTDLP_TMP}"
@@ -88,7 +103,9 @@ if [ -n "${YTDLP_ASSET}" ]; then
 fi
 
 # ---------- ffmpeg（BtbN 静态构建，需解压） ----------
-if [ -n "${FFMPEG_ASSET}" ]; then
+if mirror_copy ffmpeg; then
+  echo "✅ ffmpeg 已就绪"
+elif [ -n "${FFMPEG_ASSET}" ]; then
   echo "🎞️  ffmpeg"
   FFMPEG_TMP="${BIN_DIR}/.ffmpeg-dl.${FFMPEG_ASSET##*.}"
   download "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/${FFMPEG_ASSET}" "${FFMPEG_TMP}"
@@ -108,7 +125,9 @@ if [ -n "${FFMPEG_ASSET}" ]; then
 fi
 
 # ---------- whisper-cli（ggml-org/whisper.cpp） ----------
-if [ -n "${WHISPER_ASSET}" ]; then
+if mirror_copy whisper-cli; then
+  echo "✅ whisper-cli 已就绪"
+elif [ -n "${WHISPER_ASSET}" ]; then
   echo "🎧  whisper-cli"
   WHISPER_TMP="${BIN_DIR}/.whisper-dl.zip"
   download "https://github.com/ggml-org/whisper.cpp/releases/latest/download/${WHISPER_ASSET}" "${WHISPER_TMP}"
@@ -123,7 +142,25 @@ if [ -n "${WHISPER_ASSET}" ]; then
   install -m 0755 "${WHISPER_BIN}" "${BIN_DIR}/whisper-cli-${TARGET_TRIPLE}${EXE_SUFFIX}"
   rm -rf "${WHISPER_TMPDIR}" "${WHISPER_TMP}"
 else
-  echo "⚠️  ${TARGET_TRIPLE} 无官方 whisper-cli 预编译包，打包时请通过 PATH 提供或从源码构建。"
+  echo "⚠️  ${TARGET_TRIPLE} 无官方 whisper-cli 预编译包，尝试从 submodule 源码构建。"
+  if [ -d "${SCRIPT_DIR}/../third_party/whisper.cpp" ]; then
+    echo "🎧  从 submodule 构建 whisper-cli（third_party/whisper.cpp）"
+    WHISPER_SRC="${SCRIPT_DIR}/../third_party/whisper.cpp"
+    BUILD_DIR="${WHISPER_SRC}/build"
+    cmake -B "${BUILD_DIR}" -S "${WHISPER_SRC}" -DCMAKE_BUILD_TYPE=Release \
+      -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON >/dev/null
+    cmake --build "${BUILD_DIR}" --target whisper-cli -j"$(sysctl -n hw.ncpu 2>/dev/null || echo 4)" >/dev/null
+    WHISPER_BIN="${BUILD_DIR}/bin/whisper-cli${EXE_SUFFIX}"
+    if [ ! -f "${WHISPER_BIN}" ]; then
+      echo "❌ submodule 构建失败：未找到 ${WHISPER_BIN}" >&2
+      exit 1
+    fi
+    install -m 0755 "${WHISPER_BIN}" "${BIN_DIR}/whisper-cli-${TARGET_TRIPLE}${EXE_SUFFIX}"
+  else
+    echo "❌ 未找到 third_party/whisper.cpp submodule，请先: git submodule update --init --recursive" >&2
+    echo "   或者通过 PATH 提供 whisper-cli。" >&2
+    exit 1
+  fi
 fi
 
 echo "✅ 完成。产物："
