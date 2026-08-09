@@ -58,10 +58,6 @@ jobs:
         run: pnpm install --frozen-lockfile
         working-directory: frontend
 
-      # 拉取 sidecar 二进制（yt-dlp / ffmpeg / whisper-cli）到 src-tauri/binaries/
-      - name: Fetch external binaries
-        run: bash scripts/fetch-binaries.sh "${{ matrix.target }}"
-
       - name: Build & Release (Tauri)
         uses: tauri-apps/tauri-action@v0
         env:
