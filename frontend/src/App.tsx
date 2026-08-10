@@ -297,7 +297,7 @@ function App() {
       <div className="relative z-10 flex min-w-0 flex-1 flex-col">
         <DragRegion className="h-12 shrink-0 select-none" />
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto scrollbar-none">
           {view === "settings" ? (
             <SettingsView
               key={settingsInitialTab}

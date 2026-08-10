@@ -120,6 +120,17 @@
   }
 }
 
+@layer utilities {
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /* ============================================================================
  * Glass primitives — layered translucent surfaces over the ambient canvas.
  * Borders stay hairline (white alpha); blur refracts the ambient glows.
