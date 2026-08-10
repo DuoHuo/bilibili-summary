@@ -175,6 +175,7 @@ interface UseSessionManagerOptions {
     sttLanguage: "zh-cn" | "en"
     sttModel: string
     screenshot: boolean
+    subtitleSource: "subtitle" | "audio"
   }
 }
 
@@ -321,6 +322,7 @@ export function useSessionManager({ config }: UseSessionManagerOptions) {
             cookie: config.cookie.trim() || null,
             stt_language: config.sttLanguage,
             stt_model: config.sttModel,
+            source: config.subtitleSource,
             run_id: runId
           },
           (stage) => {
@@ -346,7 +348,7 @@ export function useSessionManager({ config }: UseSessionManagerOptions) {
       }
       return runId
     },
-    [config.cookie, config.sttLanguage, patchSession, runGenerateMode]
+    [config.cookie, config.sttLanguage, config.subtitleSource, patchSession, runGenerateMode]
   )
 
   /** 懒生成某模式；source 提供时先重新准备数据源（字幕/音频）再生成。 */

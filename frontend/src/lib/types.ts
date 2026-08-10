@@ -54,6 +54,8 @@ export interface UserConfig {
   binaryPaths: Partial<Record<string, string>>
   /** Whisper STT 模型（ggml-*.bin） */
   sttModel: string
+  /** 字幕来源：audio=强制音频转写（默认，质量最佳）；subtitle=优先抓取视频网站字幕（缺失回退转写） */
+  subtitleSource: "subtitle" | "audio"
 }
 
 /** B 站登录用户信息（来自 nav 接口） */
@@ -108,6 +110,7 @@ export function isUserConfig(value: unknown): value is UserConfig {
     isValidPromptMode(record.promptMode) &&
     isValidBiliProfile(record.biliProfile) &&
     isValidBinaryPaths(record.binaryPaths) &&
-    (record.sttModel === undefined || typeof record.sttModel === "string")
+    (record.sttModel === undefined || typeof record.sttModel === "string") &&
+    (record.subtitleSource === undefined || record.subtitleSource === "subtitle" || record.subtitleSource === "audio")
   )
 }

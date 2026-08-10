@@ -165,7 +165,7 @@ export function ModeResultTabs({
             onOpenOutput={handleOpenOutput}
             onPlayAudio={() => void handlePlayAudio()}
             onRerunSource={(source) => void onGenerate(mode, source)}
-            subtitleDisabled={session.transcript_source === "whisper"}
+            subtitleDisabled={false}
           />
         </TabsContent>
       ))}

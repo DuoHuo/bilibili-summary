@@ -70,7 +70,8 @@ const DEFAULT_CONFIG: UserConfig = {
   screenshot: false,
   biliProfile: null,
   binaryPaths: {},
-  sttModel: DEFAULT_STT_MODEL
+  sttModel: DEFAULT_STT_MODEL,
+  subtitleSource: "audio"
 }
 
 function App() {
@@ -355,6 +356,24 @@ function App() {
                           <span className="ml-1 text-xs text-muted-soft">{m.size}</span>
                         </DropdownMenuItem>
                       ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="secondary" size="sm">
+                        <FileText className="size-3.5" />
+                        字幕来源：{config.subtitleSource === "audio" ? "音频转写" : "视频网站字幕"}
+                        <ChevronDown className="size-3" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      <DropdownMenuItem onClick={() => patchConfig({ subtitleSource: "audio" })}>
+                        音频转写
+                        <span className="ml-1 text-xs text-muted-soft">推荐</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => patchConfig({ subtitleSource: "subtitle" })}>
+                        视频网站字幕
+                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                   <span className="text-xs text-muted-soft">
