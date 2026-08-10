@@ -263,7 +263,7 @@ bilibili summary 是**深色、分层、玻璃质感**的 macOS 桌面壳：near
 `DialogContent max-h-[90vh] overflow-y-auto p-8`；Header（Title + Description）+ 内容 + Footer（secondary 取消 + primary 确认）。LoginDialog 内嵌二维码 + 轮询状态（muted）+ 错误态（`text-error` + 重试）。
 
 ### SessionList / Toaster
-侧边栏会话列表：状态色点（running `muted-soft` / done `success` / error `error`）+ 标题 + 时间；hover 显示「再次生成/删除」。sonner toast：成功绿 / 错误红 + 描述行。
+侧边栏会话列表：卡片式行（`rounded-xl` + `border-hairline`，激活态 `border-primary/60 bg-surface-card`）+ 状态色点（running `muted-soft` 呼吸动效 / ready `success` / error `error`）+ 标题；整卡可点选中，不再展示状态文字（悬浮 title 提示）。hover 时卡片右侧浮现单一操作图标：running 显示取消，否则显示删除。sonner toast：成功绿 / 错误红 + 描述行。
 
 ## Do's and Don'ts
 

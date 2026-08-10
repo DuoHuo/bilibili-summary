@@ -1,4 +1,5 @@
-import { Loader2, Trash2, XCircle } from "lucide-react"
+import { Trash2, XCircle } from "lucide-react"
+
 import { describeSessionState, type SessionMeta } from "@/lib/sessions"
 import type { PromptMode } from "@/lib/prompts"
 
@@ -14,7 +15,7 @@ interface SessionListProps {
   onRemove: (runId: string) => void
 }
 
-/** 侧边栏 session 平铺列表：已完成只显示标题，运行中显示动态状态。 */
+/** 侧边栏 session 卡片列表：状态灯表示运行/完成/失败，标题恒定展示，操作按钮 hover 时浮现。 */
 export function SessionList({
   sessions,
   activeRunId,
@@ -31,61 +32,37 @@ export function SessionList({
   }
 
   return (
-    <div className="flex flex-col gap-1 px-3">
+    <div className="flex flex-col gap-1.5 px-3">
       {sessions.map((session) => {
         const active = session.run_id === activeRunId
         const running = session.status === "preparing" || hasRunningMode(session)
+        const dotClass = running ? "bg-muted-soft animate-pulse" : session.status === "ready" ? "bg-success" : "bg-error"
+        const hint = describeSessionState(session) || session.error || session.title
         return (
-          <div
-            key={session.run_id}
-            className={`group flex flex-col rounded-lg px-3 py-1.5 transition-colors ${
-              active ? "bg-surface-card" : "hover:bg-surface-soft"
-            }`}
-          >
+          <div key={session.run_id} className="group relative">
             <button
               type="button"
               onClick={() => onSelect(session.run_id)}
-              className="flex min-w-0 items-center gap-2 text-left"
+              title={hint}
+              aria-current={active ? "true" : undefined}
+              className={`flex w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 pr-9 text-left transition-colors ${
+                active ? "border-primary/60 bg-surface-card" : "border-hairline hover:bg-surface-soft"
+              }`}
             >
-              <span
-                className={`size-1.5 shrink-0 rounded-full ${
-                  running ? "bg-muted-soft" : session.status === "ready" ? "bg-success" : "bg-error"
-                }`}
-              />
+              <span className={`size-1.5 shrink-0 rounded-full ${dotClass}`} />
               <span className="min-w-0 flex-1 truncate text-sm text-ink">
                 {session.title || "未命名视频"}
               </span>
             </button>
 
-            {running && (
-              <div className="flex items-center gap-2 pl-3.5">
-                <Loader2 className="size-3 animate-spin text-muted" />
-                <span className="flex-1 truncate text-xs text-muted">
-                  {describeSessionState(session)}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => onCancel(session.run_id)}
-                  title="取消任务"
-                  className="rounded p-0.5 text-muted hover:text-error"
-                >
-                  <XCircle className="size-3.5" />
-                </button>
-              </div>
-            )}
-
-            {!running && (
-              <div className="flex items-center justify-end opacity-0 transition-opacity group-hover:opacity-100">
-                <button
-                  type="button"
-                  onClick={() => onRemove(session.run_id)}
-                  title="删除"
-                  className="rounded p-0.5 text-muted hover:text-error"
-                >
-                  <Trash2 className="size-3" />
-                </button>
-              </div>
-            )}
+            <button
+              type="button"
+              onClick={() => (running ? onCancel(session.run_id) : onRemove(session.run_id))}
+              title={running ? "取消任务" : "删除"}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted opacity-0 transition-opacity hover:text-error focus-visible:opacity-100 group-hover:opacity-100"
+            >
+              {running ? <XCircle className="size-3.5" /> : <Trash2 className="size-3" />}
+            </button>
           </div>
         )
       })}
