@@ -1,4 +1,5 @@
 import type { SummarizeDeps, Transcript, TranscriptSegment } from "../types"
+import { AppError, generateTraceId } from "../errors"
 import { formatTranscriptWithTimestamps } from "../transcript/format"
 import { downloadAudioWithYtdlp } from "./download"
 
@@ -19,7 +20,8 @@ export async function transcribeWithWhisperCli(
   deps: Pick<SummarizeDeps, "runner" | "readFile" | "onProgress">,
   wavPath: string,
   language: string,
-  modelPath: string
+  modelPath: string,
+  traceId: string = generateTraceId()
 ): Promise<TranscriptSegment[]> {
   const base = wavPath.replace(/\.wav$/, "")
   const result = await deps.runner(
@@ -28,14 +30,14 @@ export async function transcribeWithWhisperCli(
     { onLine: (line) => deps.onProgress?.("whisper", line) }
   )
   if (result.exitCode !== 0) {
-    throw new Error("Whisper 转写失败")
+    throw new AppError("WHISPER.TRANSCRIBE_FAILED", { traceId, context: { exitCode: result.exitCode } })
   }
 
   let data: WhisperJson
   try {
     data = JSON.parse(await deps.readFile(`${base}.json`)) as WhisperJson
-  } catch {
-    throw new Error("解析 Whisper 转写结果失败")
+  } catch (cause) {
+    throw new AppError("WHISPER.PARSE_RESULT_FAILED", { traceId, cause })
   }
 
   const segments: TranscriptSegment[] = []
@@ -59,16 +61,18 @@ export async function transcribeWithWhisper(
   resourcesDir: string
 ): Promise<Transcript> {
   // resourcesDir 即音频缓存目录：命中复用，未命中下载后自然入缓存。
+  const traceId = generateTraceId()
   const wavPath = await downloadAudioWithYtdlp(deps, url, cookie, resourcesDir, resourcesDir)
   const modelPath = await deps.resolveModelPath()
   const segments = await transcribeWithWhisperCli(
     deps,
     wavPath,
     mapSttLanguage(language),
-    modelPath
+    modelPath,
+    traceId
   )
   if (segments.length === 0) {
-    throw new Error("Whisper 转写结果为空")
+    throw new AppError("WHISPER.EMPTY_RESULT", { traceId })
   }
   return {
     text: formatTranscriptWithTimestamps(segments),

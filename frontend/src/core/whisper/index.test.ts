@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import type { ExternalRunResult, SummarizeDeps } from "../types"
-import { mapSttLanguage, transcribeWithWhisperCli } from "./index"
+import { AppError } from "../errors"
+import { mapSttLanguage, transcribeWithWhisper, transcribeWithWhisperCli } from "./index"
 
 function makeDeps(overrides: Partial<SummarizeDeps> = {}): {
   deps: Pick<SummarizeDeps, "runner" | "readFile" | "onProgress">
@@ -46,18 +47,50 @@ describe("transcribeWithWhisperCli", () => {
     expect(calls[0].args).toEqual(["-m", "/models/base.bin", "-f", "/tmp/r/audio.wav", "-l", "zh", "-oj", "-of", "/tmp/r/audio"])
   })
 
-  it("转写失败抛错", async () => {
+  it("转写失败抛错（AppError, WHISPER.TRANSCRIBE_FAILED）", async () => {
     const { deps } = makeDeps()
     const runner = async () => ({ exitCode: 1, stdout: "", stderr: "err" }) as ExternalRunResult
-    await expect(
-      transcribeWithWhisperCli({ ...deps, runner }, "/tmp/r/a.wav", "zh", "/m.bin")
-    ).rejects.toThrow("Whisper 转写失败")
+    try {
+      await transcribeWithWhisperCli({ ...deps, runner }, "/tmp/r/a.wav", "zh", "/m.bin")
+      throw new Error("should have thrown")
+    } catch (err) {
+      expect(err).toBeInstanceOf(AppError)
+      expect((err as AppError).code).toBe("WHISPER.TRANSCRIBE_FAILED")
+    }
   })
 
-  it("JSON 解析失败抛错", async () => {
+  it("JSON 解析失败抛错（AppError, WHISPER.PARSE_RESULT_FAILED）", async () => {
     const { deps } = makeDeps({ readFile: async () => "not json" })
-    await expect(transcribeWithWhisperCli(deps, "/tmp/r/a.wav", "zh", "/m.bin")).rejects.toThrow(
-      "解析 Whisper 转写结果失败"
-    )
+    try {
+      await transcribeWithWhisperCli(deps, "/tmp/r/a.wav", "zh", "/m.bin")
+      throw new Error("should have thrown")
+    } catch (err) {
+      expect(err).toBeInstanceOf(AppError)
+      expect((err as AppError).code).toBe("WHISPER.PARSE_RESULT_FAILED")
+    }
+  })
+})
+
+describe("transcribeWithWhisper", () => {
+  it("segments 为空时抛错（AppError, WHISPER.EMPTY_RESULT）", async () => {
+    const runner = async (): Promise<ExternalRunResult> => ({ exitCode: 0, stdout: "", stderr: "" })
+    const deps: Pick<
+      SummarizeDeps,
+      "runner" | "readFile" | "isFile" | "writeFile" | "resolveModelPath" | "onProgress"
+    > = {
+      runner,
+      readFile: async () => JSON.stringify({ segments: [{ start: 0, end: 1, text: "   " }] }),
+      isFile: async () => true,
+      writeFile: async () => {},
+      resolveModelPath: async () => "/models/base.bin",
+      onProgress: () => {}
+    }
+    try {
+      await transcribeWithWhisper(deps, "https://b23.tv/x", null, "zh-cn", "/tmp/r")
+      throw new Error("should have thrown")
+    } catch (err) {
+      expect(err).toBeInstanceOf(AppError)
+      expect((err as AppError).code).toBe("WHISPER.EMPTY_RESULT")
+    }
   })
 })

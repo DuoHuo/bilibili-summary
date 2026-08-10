@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
 import type { HttpFetch, HttpResponse } from "../types"
+import { AppError } from "../errors"
 import { callLlm, resolveEndpoint } from "./client"
 
 function jsonResponse(payload: unknown, status = 200): HttpResponse {
@@ -52,9 +53,16 @@ describe("callLlm", () => {
     expect((sentBody as { messages: unknown[] }).messages).toHaveLength(2)
   })
 
-  it("模型返回错误抛错", async () => {
+  it("模型返回错误抛错（AppError, LLM.CALL_FAILED）", async () => {
     const http: HttpFetch = async () => jsonResponse({ error: "bad" }, 500)
-    await expect(callLlm(http, "sk-test", null, null, "p")).rejects.toThrow("模型调用失败")
+    await expect(callLlm(http, "sk-test", null, null, "p")).rejects.toThrow(AppError)
+    try {
+      await callLlm(http, "sk-test", null, null, "p")
+      throw new Error("should have thrown")
+    } catch (err) {
+      expect(err).toBeInstanceOf(AppError)
+      expect((err as AppError).code).toBe("LLM.CALL_FAILED")
+    }
   })
 
   it("空白 content 返回空串（对齐 Rust trim 行为）", async () => {

@@ -1,4 +1,5 @@
 import type { HttpFetch } from "../types"
+import { AppError, generateTraceId } from "../errors"
 
 interface OpenAIResponse {
   choices?: Array<{
@@ -31,7 +32,14 @@ export async function callLlm(
   prompt: string,
   maxTokens?: number
 ): Promise<string> {
-  const { endpoint, defaultModel } = resolveEndpoint(baseUrl)
+  const traceId = generateTraceId()
+  let endpoint: string
+  let defaultModel: string
+  try {
+    ;({ endpoint, defaultModel } = resolveEndpoint(baseUrl))
+  } catch (cause) {
+    throw new AppError("LLM.INVALID_ENDPOINT", { traceId, cause })
+  }
   const body: Record<string, unknown> = {
     model: model ?? defaultModel,
     messages: [
@@ -48,13 +56,15 @@ export async function callLlm(
   })
 
   const text = await resp.text()
-  if (!resp.ok) throw new Error("模型调用失败")
+  if (!resp.ok) {
+    throw new AppError("LLM.CALL_FAILED", { traceId, context: { status: resp.status } })
+  }
 
   let data: OpenAIResponse
   try {
     data = JSON.parse(text) as OpenAIResponse
-  } catch {
-    throw new Error("解析模型响应失败")
+  } catch (cause) {
+    throw new AppError("LLM.PARSE_RESPONSE_FAILED", { traceId, cause })
   }
 
   const content = data.choices?.[0]?.message?.content?.trim()

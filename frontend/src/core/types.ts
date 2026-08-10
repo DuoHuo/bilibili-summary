@@ -1,4 +1,5 @@
 import type { PromptMode } from "@/lib/prompts"
+import type { Logger } from "./log"
 
 /** 平台类型 */
 export type Platform = "bilibili" | "youtube"
@@ -128,4 +129,6 @@ export interface SummarizeDeps {
   isFile: (path: string) => Promise<boolean>
   /** 测试注入用；默认 new Date() */
   now?: () => Date
+  /** 结构化诊断日志；未提供时调用方应用 createNoopLogger() 兵底 */
+  logger?: Logger
 }

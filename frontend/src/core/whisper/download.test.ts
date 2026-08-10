@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { ExternalRunResult, SummarizeDeps } from "../types"
+import { AppError } from "../errors"
 import { downloadAudioWithYtdlp, downloadVideoWithYtdlp } from "./download"
 
 function makeDeps(overrides: Partial<SummarizeDeps> = {}): {
@@ -78,6 +79,39 @@ describe("downloadAudioWithYtdlp", () => {
       downloadAudioWithYtdlp(deps, "https://www.bilibili.com/video/BV1xx411c7mD", "not-a-cookie", "/tmp/r")
     ).rejects.toThrow("不是有效的 cookie 字符串")
   })
+
+  it("yt-dlp 退出码非零时抛 AppError，携带 stdout/stderr 尾部", async () => {
+    const { deps } = makeDeps({
+      runner: async () => ({
+        exitCode: 1,
+        stdout: Array.from({ length: 300 }, (_, i) => `out-${i}`).join("\n"),
+        stderr: "ERROR: something failed"
+      })
+    })
+    try {
+      await downloadAudioWithYtdlp(deps, "https://www.bilibili.com/video/BV1xx411c7mD", null, "/tmp/r")
+      throw new Error("expected AppError to be thrown")
+    } catch (err) {
+      expect(err).toBeInstanceOf(AppError)
+      const appError = err as AppError
+      expect(appError.code).toBe("WHISPER.YTDLP_DOWNLOAD_FAILED")
+      expect(appError.context?.exitCode).toBe(1)
+      expect(appError.context?.stdoutTail).toBeDefined()
+      expect((appError.context?.stdoutTail as string).split("\n")).toHaveLength(200)
+      expect(appError.context?.stderrTail).toBe("ERROR: something failed")
+    }
+  })
+
+  it("wav 文件未找到时抛 AppError", async () => {
+    const { deps } = makeDeps({ isFile: async () => false })
+    try {
+      await downloadAudioWithYtdlp(deps, "https://www.bilibili.com/video/BV1xx411c7mD", null, "/tmp/r")
+      throw new Error("expected AppError to be thrown")
+    } catch (err) {
+      expect(err).toBeInstanceOf(AppError)
+      expect((err as AppError).code).toBe("WHISPER.WAV_NOT_FOUND")
+    }
+  })
 })
 
 describe("downloadVideoWithYtdlp", () => {
@@ -87,5 +121,32 @@ describe("downloadVideoWithYtdlp", () => {
     expect(path).toBe("/tmp/v/BV1xx411c7mD.mp4")
     expect(calls[0].args).toContain("-f")
     expect(calls[0].args).toContain("bestvideo+bestaudio/best")
+  })
+
+  it("yt-dlp 退出码非零时抛 AppError，携带 stdout/stderr 尾部", async () => {
+    const { deps } = makeDeps({
+      runner: async () => ({ exitCode: 1, stdout: "progress line", stderr: "ffmpeg postprocessor error" })
+    })
+    try {
+      await downloadVideoWithYtdlp(deps, "https://www.bilibili.com/video/BV1xx411c7mD", null, "/tmp/v")
+      throw new Error("expected AppError to be thrown")
+    } catch (err) {
+      expect(err).toBeInstanceOf(AppError)
+      const appError = err as AppError
+      expect(appError.code).toBe("WHISPER.YTDLP_VIDEO_DOWNLOAD_FAILED")
+      expect(appError.context?.stdoutTail).toBe("progress line")
+      expect(appError.context?.stderrTail).toBe("ffmpeg postprocessor error")
+    }
+  })
+
+  it("mp4 文件未找到时抛 AppError", async () => {
+    const { deps } = makeDeps({ isFile: async () => false })
+    try {
+      await downloadVideoWithYtdlp(deps, "https://www.bilibili.com/video/BV1xx411c7mD", null, "/tmp/v")
+      throw new Error("expected AppError to be thrown")
+    } catch (err) {
+      expect(err).toBeInstanceOf(AppError)
+      expect((err as AppError).code).toBe("WHISPER.MP4_NOT_FOUND")
+    }
   })
 })

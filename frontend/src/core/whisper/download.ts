@@ -1,4 +1,5 @@
 import type { SummarizeDeps } from "../types"
+import { AppError, generateTraceId, tailLines } from "../errors"
 import { buildWhisperAudioName } from "./audio"
 import { buildNetscapeCookieContent } from "./cookies"
 
@@ -48,6 +49,7 @@ export async function downloadAudioWithYtdlp(
     return cachePath
   }
 
+  const traceId = generateTraceId()
   const outputTemplate = `${outputDir}/${outputName}.%(ext)s`
   const cookieArgs = await resolveCookieArgs(deps, url, cookie, outputDir)
 
@@ -69,12 +71,19 @@ export async function downloadAudioWithYtdlp(
     { cwd: outputDir, stage: "whisper", onLine: (line) => deps.onProgress?.("whisper", line) }
   )
   if (result.exitCode !== 0) {
-    throw new Error("下载音频失败，请检查 yt-dlp 输出")
+    throw new AppError("WHISPER.YTDLP_DOWNLOAD_FAILED", {
+      traceId,
+      context: {
+        exitCode: result.exitCode,
+        stdoutTail: tailLines(result.stdout, 200),
+        stderrTail: tailLines(result.stderr, 200)
+      }
+    })
   }
 
   const wavPath = `${outputDir}/${outputName}.wav`
   if (await deps.isFile(wavPath)) return wavPath
-  throw new Error("下载音频失败，未找到 wav 文件")
+  throw new AppError("WHISPER.WAV_NOT_FOUND", { traceId })
 }
 
 /** 用 yt-dlp 下载视频（截图用）。移植自 download_video_with_ytdlp。 */
@@ -84,6 +93,7 @@ export async function downloadVideoWithYtdlp(
   cookie: string | null,
   outputDir: string
 ): Promise<string> {
+  const traceId = generateTraceId()
   const outputName = buildWhisperAudioName(url)
   const outputTemplate = `${outputDir}/${outputName}.%(ext)s`
   const cookieArgs = await resolveCookieArgs(deps, url, cookie, outputDir)
@@ -94,10 +104,17 @@ export async function downloadVideoWithYtdlp(
     { cwd: outputDir, stage: "whisper", onLine: (line) => deps.onProgress?.("whisper", line) }
   )
   if (result.exitCode !== 0) {
-    throw new Error("下载视频失败，请检查 yt-dlp 输出")
+    throw new AppError("WHISPER.YTDLP_VIDEO_DOWNLOAD_FAILED", {
+      traceId,
+      context: {
+        exitCode: result.exitCode,
+        stdoutTail: tailLines(result.stdout, 200),
+        stderrTail: tailLines(result.stderr, 200)
+      }
+    })
   }
 
   const mp4Path = `${outputDir}/${outputName}.mp4`
   if (await deps.isFile(mp4Path)) return mp4Path
-  throw new Error("下载视频失败，未找到 mp4 文件")
+  throw new AppError("WHISPER.MP4_NOT_FOUND", { traceId })
 }
