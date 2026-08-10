@@ -85,14 +85,14 @@ Phase 2（落盘 sink / 导出日志包 UI）、Phase 3（热调级别 + TTL 过
 
 ## Acceptance Criteria
 
-- [ ] AC1：`yt-dlp` 音频下载失败时，用户看到的错误包含错误码 + 8 字符诊断 ID + 一句人话；不再是裸的 `"下载音频失败，请检查 yt-dlp 输出"`
-- [ ] AC2：`AppError` 携带的 `stdoutTail` / `stderrTail` 均为非空时行数 ≤200（取尾部逻辑正确），且已经过脱敏中间件处理（不包含明文 token/cookie/sessdata 片段）
-- [ ] AC3：`downloadAudioWithYtdlp` / `downloadVideoWithYtdlp` 四处报错点全部改造完成，行为通过现有 + 新增单测验证
-- [ ] AC3b：`core/llm/client.ts`（3 处）+ `core/whisper/index.ts`（3 处）共 6 处报错点全部改为 `AppError`，`error.message` 能明确区分“大模型调用失败”与“语音转写失败”（不再是歧义的“模型调用失败”），行为通过现有 + 新增单测验证
-- [ ] AC4：Phase 0 不改动 `SummarizeDeps` / `ExternalRunner` 签名；Phase 1 新增的 `logger?:` 字段为可选，现有全部测试文件（`whisper/*.test.ts`、`workflow/index.test.ts`、`llm/*.test.ts` 等）无需改动即可通过编译与测试
-- [ ] AC5：`core/log/` 模块对以下场景有单测覆盖：级别过滤（4 档边界）、脱敏命中（结构化键名 `api_key`/`cookie`/`base_url` + 自由文本中的 token/sessdata 值）与未命中（不误伤正常字段）、事件字段完整性（`ts/level/event/trace_id` 必填、`err` 按需）
-- [ ] AC6：`pnpm --filter ./frontend check` 与 `pnpm --filter ./frontend test` 全绿
-- [ ] AC7：本任务不引入任何文件落盘逻辑、不修改 `Cargo.toml`、不新增 Rust 依赖、不改动 `src-tauri/src/commands.rs`（Phase 2 范围）
+- [x] AC1：`yt-dlp` 音频下载失败时，用户看到的错误包含错误码 + 8 字符诊断 ID + 一句人话；不再是裸的 `"下载音频失败，请检查 yt-dlp 输出"`
+- [x] AC2：`AppError` 携带的 `stdoutTail` / `stderrTail` 均为非空时行数 ≤200（取尾部逻辑正确），且已经过脱敏中间件处理（不包含明文 token/cookie/sessdata 片段）
+- [x] AC3：`downloadAudioWithYtdlp` / `downloadVideoWithYtdlp` 四处报错点全部改造完成，行为通过现有 + 新增单测验证
+- [x] AC3b：`core/llm/client.ts`（3 处）+ `core/whisper/index.ts`（3 处）共 6 处报错点全部改为 `AppError`，`error.message` 能明确区分“大模型调用失败”与“语音转写失败”（不再是歧义的“模型调用失败”），行为通过现有 + 新增单测验证
+- [x] AC4：Phase 0 不改动 `SummarizeDeps` / `ExternalRunner` 签名；Phase 1 新增的 `logger?:` 字段为可选，现有全部测试文件（`whisper/*.test.ts`、`workflow/index.test.ts`、`llm/*.test.ts` 等）无需改动即可通过编译与测试
+- [x] AC5：`core/log/` 模块对以下场景有单测覆盖：级别过滤（4 档边界）、脱敏命中（结构化键名 `api_key`/`cookie`/`base_url` + 自由文本中的 token/sessdata 值）与未命中（不误伤正常字段）、事件字段完整性（`ts/level/event/trace_id` 必填、`err` 按需）
+- [x] AC6：`pnpm --filter ./frontend check` 与 `pnpm --filter ./frontend test` 全绿
+- [x] AC7：本任务不引入任何文件落盘逻辑、不修改 `Cargo.toml`、不新增 Rust 依赖、不改动 `src-tauri/src/commands.rs`（Phase 2 范围）
 
 ## Out of Scope（明确排除，供后续任务参照）
 
