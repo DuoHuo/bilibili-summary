@@ -381,14 +381,17 @@ function EngineTab({ config, onChange }: { config: UserConfig; onChange: (patch:
               )}
               <span className="text-sm font-medium text-ink">{bin.label}</span>
               <span className="text-xs text-muted-soft">{bin.description}</span>
-              <span className="ml-auto text-xs text-muted-soft">
-                {state?.path ?? (state?.error || "未检测到")}
-              </span>
             </div>
             <div className="flex items-center gap-2">
               <Input
                 className="h-8 flex-1 text-xs"
-                placeholder="留空自动检测；或输入自定义路径"
+                placeholder={
+                  state?.checking
+                    ? "检测中…"
+                    : state?.available && state?.path
+                      ? state.path
+                      : state?.error || "留空自动检测；或输入自定义路径"
+                }
                 spellCheck={false}
                 value={customPath}
                 onChange={(e) => onChange({ binaryPaths: { ...config.binaryPaths, [bin.program]: e.target.value } })}
