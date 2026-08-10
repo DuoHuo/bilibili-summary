@@ -12,7 +12,7 @@ const buttonVariants = cva(
         primary:
           "bg-primary text-on-primary active:bg-primary-active h-10 rounded-md px-5 text-sm",
         secondary:
-          "bg-canvas text-ink border border-hairline active:bg-surface-soft h-10 rounded-md px-5 text-sm",
+          "bg-surface-card text-ink border border-hairline active:bg-surface-cream-strong h-10 rounded-md px-5 text-sm",
         dark:
           "bg-surface-dark-elevated text-on-dark active:bg-surface-dark-soft h-10 rounded-md px-5 text-sm",
         outline:

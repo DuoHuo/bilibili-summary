@@ -397,7 +397,7 @@ function EngineTab({ config, onChange }: { config: UserConfig; onChange: (patch:
                 onChange={(e) => onChange({ binaryPaths: { ...config.binaryPaths, [bin.program]: e.target.value } })}
               />
               <Button variant="secondary" size="sm" onClick={() => void checkOne(bin.program)} disabled={state?.checking}>
-                <RefreshCw className="size-3.5" />
+                {state?.checking ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
                 检测
               </Button>
               <Button size="sm" onClick={() => void handleDownload(bin.program)} disabled={state?.downloading}>

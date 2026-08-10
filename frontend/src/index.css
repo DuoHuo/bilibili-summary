@@ -53,6 +53,11 @@
   --color-warning: #d4a017;
   --color-error: #e06c6c;
 
+  /* Glass opacity — single source of truth for all translucent surfaces
+     (glass panels, glass-strong panels, secondary buttons). Tune here only. */
+  --glass-opacity-soft: 4%;
+  --glass-opacity-strong: 6%;
+
   /* Radius scale */
   --radius-xs: 4px;
   --radius-sm: 6px;
@@ -138,13 +143,13 @@
 
 @layer components {
   .glass {
-    background: color-mix(in srgb, #ffffff 4%, transparent);
+    background: color-mix(in srgb, #ffffff var(--glass-opacity-soft), transparent);
     backdrop-filter: blur(20px) saturate(150%);
     -webkit-backdrop-filter: blur(20px) saturate(150%);
   }
 
   .glass-strong {
-    background: color-mix(in srgb, #ffffff 6%, transparent);
+    background: color-mix(in srgb, #ffffff var(--glass-opacity-strong), transparent);
     backdrop-filter: blur(28px) saturate(160%);
     -webkit-backdrop-filter: blur(28px) saturate(160%);
   }

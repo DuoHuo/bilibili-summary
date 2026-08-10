@@ -24,9 +24,23 @@ shadcn bridge vars (`:root`) map onto these tokens; shadcn primitives
 - `.glass` / `.glass-strong` — translucent white surface + `backdrop-filter: blur(...)`.
   Always pair with an explicit Tailwind border (`border border-hairline`) and radius
   (`rounded-xl` / `rounded-2xl`); the utility itself carries no border/radius.
+- `--glass-opacity-soft` / `--glass-opacity-strong` (`@theme` tokens) — the single tunable
+  alpha source for `.glass` / `.glass-strong`'s `color-mix()` background. Adjust overall
+  glass translucency here only; never hardcode a new alpha percentage in a component.
 - `.ambient-bg` — fixed radial coral/teal glows behind the whole shell; glass panels
   refract it. One instance at the app root (`App.tsx`), `pointer-events-none`.
 - `.card-shadow` — depth shadow for raised glass cards.
+
+## Button variants (`components/ui/button.tsx`)
+
+- `primary` — coral CTA, the only high-emphasis action per surface (e.g. 下载/登录).
+- `secondary` — translucent glass surface (`bg-surface-card` + hairline border), same
+  material family as `.glass`/`.glass-strong` panels, for medium-emphasis actions
+  (e.g. 检测/测试连接/取消). Never use opaque `bg-canvas` here — see Forbidden.
+- Do **not** add `backdrop-filter`/`backdrop-blur` directly on buttons: nested
+  `backdrop-filter` inside an already-blurred `.glass`/`.glass-strong` ancestor filters
+  the parent's composited result, not the ambient layer, and reads as a muddy patch
+  instead of the intended translucency. A `surface-*` token background is sufficient.
 
 ## Layout shell conventions
 
@@ -43,5 +57,8 @@ shadcn bridge vars (`:root`) map onto these tokens; shadcn primitives
 
 - Hardcoded light-mode colors or new cream palette values.
 - Opaque `bg-canvas` panels inside the workspace (kills the glass layering);
-  use `.glass` + hairline border instead.
+  use `.glass` + hairline border instead. This includes buttons — `secondary` must
+  stay on a translucent `surface-*` token, not `bg-canvas`.
 - Per-component color overrides; adjust tokens in `index.css` instead.
+- Hardcoding a new glass alpha percentage in a component instead of reusing
+  `--glass-opacity-soft` / `--glass-opacity-strong`.
