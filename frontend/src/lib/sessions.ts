@@ -3,11 +3,20 @@ import { load } from "@tauri-apps/plugin-store"
 import { listen } from "@tauri-apps/api/event"
 import type { PromptMode } from "./prompts"
 import type { Transcript } from "@/core/types"
-import { runGenerate, runPrepare } from "./api"
+import { runGenerate, runPrepare, SummarizeError } from "./api"
 import { killExternal, readTextFile, removeDir, resolveOutputDir, writeTextFile } from "./tauri"
+import { loggerRef } from "./logger"
+import { AppError, generateTraceId } from "@/core/errors"
 
 const SESSIONS_FILE = "sessions.json"
 const SESSIONS_KEY = "list"
+
+/** 从捕获的错误中提取 AppError 诊断字段：优先 SummarizeError.appError（runPrepare/runGenerate 包装层透传），否则直接 AppError。 */
+function extractAppError(err: unknown): AppError | null {
+  if (err instanceof AppError) return err
+  if (err instanceof SummarizeError && err.appError) return err.appError
+  return null
+}
 
 export type SessionStatus = "preparing" | "ready" | "error" | "cancelled"
 export type ModeStatus = "pending" | "running" | "done" | "error"
@@ -16,6 +25,8 @@ export interface ModeEntry {
   status: ModeStatus
   error?: string
   finishedAt?: number | null
+  /** 失败诊断 ID（AppError.diagnosticId），供 UI 反查日志文件 */
+  diagnosticId?: string
 }
 
 export interface SessionMeta {
@@ -29,6 +40,8 @@ export interface SessionMeta {
   createdAt: number
   finishedAt: number | null
   error?: string
+  /** 失败诊断 ID（session 级 prepare 失败时附），供 UI 反查日志 */
+  diagnosticId?: string
   outputDir: string
   /** 准备阶段进度阶段（detect/fetch_subtitle/whisper）；完成后为 null */
   stage?: string | null
@@ -79,6 +92,7 @@ export function isSessionMeta(value: unknown): value is SessionMeta {
     typeof record.createdAt === "number" &&
     (record.finishedAt === null || typeof record.finishedAt === "number") &&
     (record.error === undefined || typeof record.error === "string") &&
+    (record.diagnosticId === undefined || typeof record.diagnosticId === "string") &&
     typeof record.outputDir === "string" &&
     (record.stage === undefined || record.stage === null || typeof record.stage === "string") &&
     (record.transcript_source === undefined || record.transcript_source === "subtitle" || record.transcript_source === "whisper") &&
@@ -186,6 +200,18 @@ export function useSessionManager({ config }: UseSessionManagerOptions) {
   const [sessions, setSessions] = useState<SessionMeta[]>([])
   const sessionsRef = useRef<SessionMeta[]>([])
   sessionsRef.current = sessions
+  // 进度去重：onProgress 是每行输出的 firehose（download.ts onLine 转发），同 stage 重复触发只在首次记 INFO
+  const lastStageRef = useRef<Record<string, string>>({})
+  /** stage 变化记 INFO（去重）；detail（yt-dlp/whisper 逐行输出）记 DEBUG 仅 UI 可见不落盘 */
+  const logStage = (id: string, stage: string, detail?: string): void => {
+    if (lastStageRef.current[id] !== stage) {
+      lastStageRef.current[id] = stage
+      loggerRef.log("INFO", "session.stage_changed", { trace_id: id, run_id: id, stage })
+    }
+    if (detail) {
+      loggerRef.log("DEBUG", "session.stage_detail", { trace_id: id, run_id: id, stage, detail })
+    }
+  }
 
   // 启动时加载持久化历史
   useEffect(() => {
@@ -278,19 +304,35 @@ export function useSessionManager({ config }: UseSessionManagerOptions) {
             screenshot: config.screenshot
           },
           // 模式生成阶段的进度（build_prompt/llm/render）路由到 session.stage，正文动态展示
-          (stage) => {
+          (stage, detail) => {
             setSessions((prev) =>
               prev.map((s) =>
                 s.run_id === target.run_id && s.modes[mode]?.status === "running" ? { ...s, stage } : s
               )
             )
+            logStage(target.run_id, stage, detail)
           }
         )
         patchMode(target.run_id, mode, { status: "done", finishedAt: Date.now() })
+        loggerRef.log("INFO", "llm.generate_succeeded", { trace_id: target.run_id, run_id: target.run_id, mode })
         return result
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
-        patchMode(target.run_id, mode, { status: "error", error: message, finishedAt: Date.now() })
+        const appErr = extractAppError(err)
+        // 一次 patch：失败状态 + 诊断 ID（供 UI 反查日志）
+        patchMode(target.run_id, mode, {
+          status: "error",
+          error: message,
+          finishedAt: Date.now(),
+          ...(appErr ? { diagnosticId: appErr.diagnosticId } : {})
+        })
+        // 结构化诊断日志：AppError 携带的 code/context（如 stdoutTail/stderrTail/HTTP status）在此落盘（经 buildLogEvent 强制脱敏）
+        loggerRef.log("ERROR", "llm.generate_failed", {
+          trace_id: appErr?.traceId ?? generateTraceId(),
+          run_id: target.run_id,
+          mode,
+          err: appErr ? { code: appErr.code, message, context: appErr.context } : { code: "UNKNOWN", message }
+        })
       }
       return null
     },
@@ -325,10 +367,11 @@ export function useSessionManager({ config }: UseSessionManagerOptions) {
             source: config.subtitleSource,
             run_id: runId
           },
-          (stage) => {
+          (stage, detail) => {
             setSessions((prev) =>
               prev.map((s) => (s.run_id === runId && s.status === "preparing" ? { ...s, stage } : s))
             )
+            logStage(runId, stage, detail)
           }
         )
         const readySession: SessionMeta = { ...session, title: prepared.title, status: "ready", stage: null }
@@ -338,6 +381,7 @@ export function useSessionManager({ config }: UseSessionManagerOptions) {
           stage: null,
           transcript_source: prepared.transcript.source
         })
+        loggerRef.log("INFO", "session.prepare_succeeded", { trace_id: runId, run_id: runId })
         // 自动生成选中的模式（懒生成其他模式仍由 Tab 触发）
         if (autoMode) {
           await runGenerateMode(readySession, autoMode)
@@ -345,6 +389,72 @@ export function useSessionManager({ config }: UseSessionManagerOptions) {
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         patchSession(runId, { status: "error", finishedAt: Date.now(), stage: null, error: message })
+        const appErr = extractAppError(err)
+        loggerRef.log("ERROR", "whisper.prepare_failed", {
+          trace_id: appErr?.traceId ?? generateTraceId(),
+          run_id: runId,
+          err: appErr ? { code: appErr.code, message, context: appErr.context } : { code: "UNKNOWN", message }
+        })
+        if (appErr) patchSession(runId, { diagnosticId: appErr.diagnosticId })
+      }
+      return runId
+    },
+    [config.cookie, config.sttLanguage, config.subtitleSource, patchSession, runGenerateMode]
+  )
+
+  /** 在已有 session 上重新准备数据源（prepare 失败后重试）：复用原 url/outputDir，成功后转 ready，可选自动生成 autoMode。 */
+  const reprepare = useCallback(
+    async (runId: string, autoMode?: PromptMode) => {
+      const target = sessionsRef.current.find((s) => s.run_id === runId)
+      if (!target) return null
+
+      patchSession(runId, { status: "preparing", stage: "detect", error: undefined, diagnosticId: undefined, finishedAt: null })
+      try {
+        const prepared = await runPrepare(
+          {
+            url: target.url,
+            cookie: config.cookie.trim() || null,
+            stt_language: config.sttLanguage,
+            stt_model: config.sttModel,
+            source: config.subtitleSource,
+            run_id: runId
+          },
+          (stage, detail) => {
+            setSessions((prev) =>
+              prev.map((s) => (s.run_id === runId && s.status === "preparing" ? { ...s, stage } : s))
+            )
+            logStage(runId, stage, detail)
+          }
+        )
+        // 覆盖结构化 transcript（供懒生成恢复）
+        await writeTextFile(
+          `${target.outputDir}/transcript_${runId}.json`,
+          JSON.stringify({ segments: prepared.transcript.segments, source: prepared.transcript.source })
+        )
+        const readySession: SessionMeta = { ...target, title: prepared.title, status: "ready", stage: null }
+        patchSession(runId, {
+          title: prepared.title,
+          status: "ready",
+          stage: null,
+          error: undefined,
+          diagnosticId: undefined,
+          transcript_source: prepared.transcript.source
+        })
+        loggerRef.log("INFO", "session.prepare_succeeded", { trace_id: runId, run_id: runId })
+        // 自动生成选中模式（与 start 对齐）
+        if (autoMode) {
+          await runGenerateMode(readySession, autoMode)
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        patchSession(runId, { status: "error", finishedAt: Date.now(), stage: null, error: message })
+        const appErr = extractAppError(err)
+        loggerRef.log("ERROR", "whisper.reprepare_failed", {
+          trace_id: appErr?.traceId ?? generateTraceId(),
+          run_id: runId,
+          err: appErr ? { code: appErr.code, message, context: appErr.context } : { code: "UNKNOWN", message }
+        })
+        if (appErr) patchSession(runId, { diagnosticId: appErr.diagnosticId })
       }
       return runId
     },
@@ -370,10 +480,11 @@ export function useSessionManager({ config }: UseSessionManagerOptions) {
               run_id: runId,
               source
             },
-            (stage) => {
+            (stage, detail) => {
               setSessions((prev) =>
                 prev.map((s) => (s.run_id === runId && s.status === "preparing" ? { ...s, stage } : s))
               )
+              logStage(runId, stage, detail)
             }
           )
           // 覆盖结构化 transcript（供懒生成恢复）
@@ -389,7 +500,19 @@ export function useSessionManager({ config }: UseSessionManagerOptions) {
         } catch (err) {
           patchSession(runId, { status: "ready", stage: null })
           const message = err instanceof Error ? err.message : String(err)
-          patchMode(runId, mode, { status: "error", error: message, finishedAt: Date.now() })
+          const appErr = extractAppError(err)
+          patchMode(runId, mode, {
+            status: "error",
+            error: message,
+            finishedAt: Date.now(),
+            ...(appErr ? { diagnosticId: appErr.diagnosticId } : {})
+          })
+          loggerRef.log("ERROR", "whisper.reprepare_failed", {
+            trace_id: appErr?.traceId ?? generateTraceId(),
+            run_id: runId,
+            mode,
+            err: appErr ? { code: appErr.code, message, context: appErr.context } : { code: "UNKNOWN", message }
+          })
           return null
         }
       }
@@ -436,7 +559,7 @@ export function useSessionManager({ config }: UseSessionManagerOptions) {
     }
   }, [])
 
-  return { sessions, start, generate, cancel, cancelMode, remove }
+  return { sessions, start, reprepare, generate, cancel, cancelMode, remove }
 }
 
 export { writeTextFile }

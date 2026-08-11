@@ -8,8 +8,19 @@ export function mapSttLanguage(language: "zh-cn" | "en"): string {
   return language === "zh-cn" ? "zh" : "en"
 }
 
+interface WhisperTranscriptionItem {
+  offsets?: { from?: number; to?: number }
+  text?: string | null
+}
+interface WhisperSegmentItem {
+  start?: number
+  end?: number
+  text?: string | null
+}
+/** whisper.cpp -oj 新版输出 transcription（offsets 毫秒）；旧版输出 segments（start/end 秒）。解析兼容两者 */
 interface WhisperJson {
-  segments?: Array<{ start?: number; end?: number; text?: string | null }> | null
+  transcription?: WhisperTranscriptionItem[] | null
+  segments?: WhisperSegmentItem[] | null
 }
 
 /**
@@ -41,10 +52,21 @@ export async function transcribeWithWhisperCli(
   }
 
   const segments: TranscriptSegment[] = []
-  for (const item of data.segments ?? []) {
+  // 新版 transcription（offsets 毫秒）优先，旧版 segments（秒）兼容
+  const items: Array<WhisperTranscriptionItem | WhisperSegmentItem> = data.transcription ?? data.segments ?? []
+  for (const item of items) {
     const text = item.text?.trim()
     if (!text) continue
-    segments.push({ start: item.start ?? 0, end: item.end ?? item.start ?? 0, text })
+    if ("offsets" in item && item.offsets) {
+      segments.push({
+        start: (item.offsets.from ?? 0) / 1000,
+        end: (item.offsets.to ?? item.offsets.from ?? 0) / 1000,
+        text
+      })
+    } else {
+      const seg = item as WhisperSegmentItem
+      segments.push({ start: seg.start ?? 0, end: seg.end ?? seg.start ?? 0, text })
+    }
   }
   return segments
 }

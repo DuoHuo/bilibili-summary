@@ -47,6 +47,20 @@ describe("transcribeWithWhisperCli", () => {
     expect(calls[0].args).toEqual(["-m", "/models/base.bin", "-f", "/tmp/r/audio.wav", "-l", "zh", "-oj", "-of", "/tmp/r/audio"])
   })
 
+  it("解析新版 whisper.cpp -oj transcription 格式（offsets 毫秒→秒）", async () => {
+    const { deps } = makeDeps({
+      readFile: async () =>
+        JSON.stringify({
+          transcription: [
+            { offsets: { from: 0, to: 1800 }, text: " run more experiments" },
+            { offsets: { from: 1800, to: 3600 }, text: "   " }
+          ]
+        })
+    })
+    const segments = await transcribeWithWhisperCli(deps, "/tmp/r/audio.wav", "zh", "/models/base.bin")
+    expect(segments).toEqual([{ start: 0, end: 1.8, text: "run more experiments" }])
+  })
+
   it("转写失败抛错（AppError, WHISPER.TRANSCRIBE_FAILED）", async () => {
     const { deps } = makeDeps()
     const runner = async () => ({ exitCode: 1, stdout: "", stderr: "err" }) as ExternalRunResult

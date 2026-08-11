@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { buildLogEvent, createNoopLogger } from "./event"
+import { buildLogEvent, createLogger, createNoopLogger } from "./event"
 
 describe("buildLogEvent", () => {
   it("合规事件名通过", () => {
@@ -74,5 +74,51 @@ describe("createNoopLogger", () => {
   it("按自定义阈值放行：threshold=ERROR 时 ERROR 事件仍会走 buildLogEvent 校验（非法事件名抛错）", () => {
     const logger = createNoopLogger("ERROR")
     expect(() => logger.log("ERROR", "not-a-valid-event-name", { trace_id: "t1" })).toThrow()
+  })
+})
+
+describe("createLogger", () => {
+  it("sink 收到 buildLogEvent 的返回值（含 ts/level/event/trace_id）", () => {
+    const sink = vi.fn()
+    const logger = createLogger(sink, "INFO")
+    logger.log("ERROR", "whisper.download_failed", { trace_id: "t1" })
+    expect(sink).toHaveBeenCalledOnce()
+    const evt = sink.mock.calls[0][0]
+    expect(evt.ts).toEqual(expect.any(String))
+    expect(evt.level).toBe("ERROR")
+    expect(evt.event).toBe("whisper.download_failed")
+    expect(evt.trace_id).toBe("t1")
+  })
+
+  it("sink 收到的事件已脱敏（api_key/cookie 键名 + 自由文本 token）", () => {
+    const sink = vi.fn()
+    const logger = createLogger(sink, "INFO")
+    logger.log("ERROR", "llm.call_failed", {
+      trace_id: "t2",
+      err: { code: "LLM.CALL_FAILED", message: "x", context: { api_key: "sk-secret", stderrTail: "fetch https://upos.example.com/x?token=abc failed" } }
+    })
+    const evt = sink.mock.calls[0][0]
+    const ctx = evt.err?.context as Record<string, unknown>
+    expect(ctx.api_key).toBe("[REDACTED]")
+    expect(ctx.stderrTail).toBe("fetch https://upos.example.com/x?token=[REDACTED] failed")
+  })
+
+  it("按阈值过滤：threshold=ERROR 时 INFO 不触发 sink", () => {
+    const sink = vi.fn()
+    const logger = createLogger(sink, "ERROR")
+    logger.log("INFO", "whisper.download_succeeded", { trace_id: "t1" })
+    expect(sink).not.toHaveBeenCalled()
+  })
+
+  it("sink 抛错不被传播（日志不得拖垮主流程）", () => {
+    const logger = createLogger(() => { throw new Error("sink boom") }, "INFO")
+    expect(() => logger.log("INFO", "whisper.download_succeeded", { trace_id: "t1" })).not.toThrow()
+  })
+
+  it("事件名不合规在 buildLogEvent 阶段抛错（不吞，编程错误）", () => {
+    const sink = vi.fn()
+    const logger = createLogger(sink, "INFO")
+    expect(() => logger.log("INFO", "bad-name", { trace_id: "t1" })).toThrow(/日志事件名不合规范/)
+    expect(sink).not.toHaveBeenCalled()
   })
 })

@@ -235,7 +235,7 @@ export function ResultPanel({
 function Frame({ children }: { children: React.ReactNode }) {
   return (
     <section className="w-full">
-      <div className="glass card-shadow rounded-2xl border border-hairline p-6">
+      <div className="raised-card p-6">
         {children}
       </div>
     </section>

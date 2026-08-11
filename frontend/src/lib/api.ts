@@ -1,12 +1,15 @@
 import { generateMode, prepareTranscript } from "@/core/workflow"
 import type { GenerateRequest, PrepareRequest, SummarizeOutput } from "@/core/types"
 import type { PromptMode } from "./prompts"
+import { AppError } from "@/core/errors"
+import { createFileLogger, loggerRef } from "./logger"
 import {
   ensureWhisperModel,
   ensureDir,
   pathIsFile,
   readTextFile,
   resolveOutputDir,
+  resolveFfmpegPath,
   tauriHttpFetch,
   tauriRunner,
   writeTextFile
@@ -38,10 +41,13 @@ export interface GeneratePayload {
 
 export class SummarizeError extends Error {
   readonly responseText: string
-  constructor(message: string, responseText: string) {
+  /** 原始 AppError（若有）：透传 code/traceId/diagnosticId/context，供调用方落盘诊断日志 */
+  readonly appError?: AppError
+  constructor(message: string, responseText: string, appError?: AppError) {
     super(message)
     this.name = "SummarizeError"
     this.responseText = responseText
+    this.appError = appError
   }
 }
 
@@ -49,12 +55,16 @@ const tauriDeps = {
   http: tauriHttpFetch,
   runner: tauriRunner,
   resolveModelPath: ensureWhisperModel,
+  resolveFfmpegPath,
   resolveOutputDir,
   ensureDir,
   writeFile: writeTextFile,
   readFile: readTextFile,
   isFile: pathIsFile
 }
+
+// 启动期异步解析日志目录 + 接文件 sink；解析完成前 loggerRef 为 noop 兜底，不阻塞主流程
+void createFileLogger().catch(() => {})
 
 /** 阶段一：字幕准备（一次性）。 */
 export async function runPrepare(
@@ -73,11 +83,13 @@ export async function runPrepare(
       {
         ...tauriDeps,
         resolveModelPath: () => ensureWhisperModel(payload.stt_model),
+        logger: loggerRef,
         onProgress
       }
     )
   } catch (err) {
-    throw new SummarizeError(err instanceof Error ? err.message : String(err), "")
+    const appErr = err instanceof AppError ? err : undefined
+    throw new SummarizeError(err instanceof Error ? err.message : String(err), "", appErr)
   }
 }
 
@@ -101,9 +113,10 @@ export async function runGenerate(
         base_url: payload.base_url,
         screenshot: payload.screenshot
       } satisfies GenerateRequest,
-      { ...tauriDeps, onProgress }
+      { ...tauriDeps, logger: loggerRef, onProgress }
     )
   } catch (err) {
-    throw new SummarizeError(err instanceof Error ? err.message : String(err), "")
+    const appErr = err instanceof AppError ? err : undefined
+    throw new SummarizeError(err instanceof Error ? err.message : String(err), "", appErr)
   }
 }

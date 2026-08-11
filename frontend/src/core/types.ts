@@ -121,8 +121,9 @@ export interface SummarizeDeps {
   runner: ExternalRunner
   onProgress?: (stage: Stage, detail?: string) => void
   resolveModelPath: () => Promise<string>
+  /** yt-dlp 后处理用 ffmpeg 目录（返回 ffmpeg 可执行文件所在目录）；未提供时 yt-dlp 走系统 PATH */
+  resolveFfmpegPath?: () => Promise<string>
   resolveOutputDir: (runId: string) => Promise<string>
-  /** 确保目录存在（截图 images 子目录用） */
   ensureDir: (path: string) => Promise<void>
   writeFile: (path: string, content: string) => Promise<void>
   readFile: (path: string) => Promise<string>

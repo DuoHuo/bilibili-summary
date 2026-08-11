@@ -77,6 +77,15 @@ export function ensureExternalBinary(program: string): Promise<string> {
   return invoke("ensure_external_binary", { program })
 }
 
+/** 解析 yt-dlp 后处理用 ffmpeg 目录：确保 ffmpeg + ffprobe 已下载，返回其所在目录（binaries/）。 */
+export async function resolveFfmpegPath(): Promise<string> {
+  // macOS：brew 装的 ffmpeg 在 /opt/homebrew/bin/ffmpeg（含 ffprobe）；其他平台：ensure 到 binaries/ 目录
+  const ffmpegPath = await ensureExternalBinary("ffmpeg")
+  // 确保同目录有 ffprobe（非 mac 平台需单独下载；mac brew 的 ffmpeg 包已含）
+  await ensureExternalBinary("ffprobe").catch(() => {})
+  return ffmpegPath.substring(0, ffmpegPath.lastIndexOf("/"))
+}
+
 /** 检测外部二进制可用性（不下载）：自定义路径 → sidecar → PATH → 缓存。 */
 export function checkExternalBinary(program: string, customPath?: string | null): Promise<{
   available: boolean
@@ -121,6 +130,15 @@ export function pathIsFile(path: string): Promise<boolean> {
   return invoke("path_exists", { path })
 }
 
+/** 定位/创建日志目录（app_log_dir，平台标准日志目录）。 */
+export function resolveLogDir(): Promise<string> {
+  return invoke("resolve_log_dir")
+}
+
+/** 追加写入文本文件 + 大小滚动（日志落盘用）。 */
+export function appendTextFile(path: string, contents: string, maxBytes: number, maxFiles: number): Promise<void> {
+  return invoke("append_text_file", { path, contents, maxBytes, maxFiles })
+}
 /** 用系统默认应用打开路径（产物目录 / 文件）。 */
 export async function openPath(path: string): Promise<void> {
   const { openPath: open } = await import("@tauri-apps/plugin-opener")

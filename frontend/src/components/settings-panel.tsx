@@ -6,6 +6,8 @@ import {
   CheckCircle2,
   Cookie,
   Download,
+  Eye,
+  EyeOff,
   Globe,
   KeyRound,
   Languages,
@@ -28,7 +30,8 @@ import { Textarea } from "@/components/ui/textarea"
 import type { BiliProfile, UserConfig } from "@/lib/types"
 import type { ProbeResult } from "@/lib/llmProbe"
 import { STT_MODELS } from "@/lib/stt-models"
-import { checkExternalBinary, checkWhisperModel, ensureExternalBinary, ensureWhisperModel } from "@/lib/tauri"
+import { checkExternalBinary, checkWhisperModel, ensureExternalBinary, ensureWhisperModel, openUrl } from "@/lib/tauri"
+import type { UpdateInfo } from "@/lib/updater"
 
 export type SettingsTab = "account" | "model" | "processing" | "engine"
 
@@ -42,6 +45,8 @@ interface SettingsViewProps {
   initialTab?: SettingsTab
   /** 测试 LLM 连接（由 App 注入，使用当前配置） */
   onTestConnection: () => Promise<ProbeResult>
+  /** 检查更新结果；hasUpdate=true 时设置页出现下载按钮 */
+  updateInfo?: UpdateInfo | null
 }
 
 export function SettingsView({
@@ -51,10 +56,12 @@ export function SettingsView({
   onLogin,
   onLogout,
   initialTab = "account",
-  onTestConnection
+  onTestConnection,
+  updateInfo
 }: SettingsViewProps) {
   const [testing, setTesting] = useState(false)
   const [probeResult, setProbeResult] = useState<ProbeResult | null>(null)
+  const [showApiKey, setShowApiKey] = useState(false)
 
   const handleTest = async () => {
     setTesting(true)
@@ -65,45 +72,46 @@ export function SettingsView({
       setTesting(false)
     }
   }
+
+  // 设置页右上角「下载新版本」按钮：仅当启动后台检查到新 release 时显示
+  const releaseUrl = updateInfo?.hasUpdate ? updateInfo.htmlUrl : null
+  const releaseVersion = updateInfo?.hasUpdate ? updateInfo.latestVersion : null
+
   return (
-    <div className="mx-auto w-full max-w-2xl px-6 pb-16">
-      <header className="mb-6 mt-2">
+    // 水平居中，垂直顶部对齐：垂直居中会因各 Tab 内容高度不同而忽上忽下
+    <div className="mx-auto w-full max-w-2xl px-6 py-10">
+      <header className="mb-6">
         <h1 className="display-sm text-ink">设置</h1>
-        <p className="mt-2 text-sm text-muted">
-          配置账号登录、大模型端点与内容处理。设置自动保存到本地。
-        </p>
       </header>
 
       <Tabs defaultValue={initialTab}>
-        <TabsList>
-          <TabsTrigger value="account">账号</TabsTrigger>
-          <TabsTrigger value="model">模型</TabsTrigger>
-          <TabsTrigger value="processing">内容处理</TabsTrigger>
-          <TabsTrigger value="engine">引擎</TabsTrigger>
-        </TabsList>
+        <div className="flex items-center justify-between gap-2">
+          <TabsList>
+            <TabsTrigger value="account">账号</TabsTrigger>
+            <TabsTrigger value="model">模型</TabsTrigger>
+            <TabsTrigger value="processing">内容处理</TabsTrigger>
+            <TabsTrigger value="engine">引擎</TabsTrigger>
+          </TabsList>
+          {releaseUrl ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void openUrl(releaseUrl)}
+            >
+              <Download className="size-3.5" />
+              下载 v{releaseVersion}
+            </Button>
+          ) : null}
+        </div>
 
         <TabsContent value="account">
-          <div className="glass card-shadow flex flex-col gap-8 rounded-2xl border border-hairline p-8">
+          <div className="raised-card flex flex-col gap-8 p-8">
             <Section title="B 站账号" icon={UserRound}>
               {profile ? (
                 <div className="flex items-center justify-between gap-4">
-                  <div className="flex min-w-0 items-center gap-3">
-                    {profile.face ? (
-                      <img
-                        src={profile.face}
-                        alt={profile.name}
-                        referrerPolicy="no-referrer"
-                        className="size-10 shrink-0 rounded-full border border-hairline"
-                      />
-                    ) : (
-                      <div className="flex size-10 shrink-0 items-center justify-center rounded-full border border-hairline bg-surface-soft text-sm font-medium text-ink">
-                        {profile.name.slice(0, 1)}
-                      </div>
-                    )}
-                    <div className="flex min-w-0 flex-col gap-0.5">
-                      <span className="truncate text-sm font-medium text-ink">@{profile.name}</span>
-                      <span className="text-xs text-muted">UID {profile.uid}</span>
-                    </div>
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <span className="truncate text-sm font-medium text-ink">@{profile.name}</span>
+                    <span className="text-xs text-muted">UID {profile.uid}</span>
                   </div>
                   <Button variant="secondary" onClick={onLogout}>
                     <LogOut />
@@ -136,76 +144,83 @@ export function SettingsView({
                   value={config.cookie}
                   onChange={(event) => onChange({ cookie: event.target.value })}
                 />
-                <p className="text-xs text-muted">
-                  含 "=" 与 ";" 时按请求头发送，否则按文件路径读取。登录后可自动填充，也可手动粘贴用于抓取会员视频字幕。
-                </p>
               </div>
             </Section>
           </div>
         </TabsContent>
 
         <TabsContent value="model">
-          <div className="glass card-shadow flex flex-col gap-8 rounded-2xl border border-hairline p-8">
+          <div className="raised-card flex flex-col gap-8 p-8">
             <Section title="AI" icon={Sparkles}>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="apiKey">
-                  API Key <span className="text-primary">*</span>
-                </Label>
-                <Input
-                  id="apiKey"
-                  type="password"
-                  autoComplete="off"
-                  spellCheck={false}
-                  placeholder="sk-…"
-                  value={config.apiKey}
-                  onChange={(event) => onChange({ apiKey: event.target.value })}
-                />
-                <p className="text-xs text-muted">
-                  OpenAI 兼容密钥，仅在本地保存，不上传服务器。
-                </p>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="baseUrl">Base URL</Label>
+              <FieldGroup>
+                <FieldRow htmlFor="baseUrl" label="Base URL">
                   <Input
                     id="baseUrl"
                     spellCheck={false}
                     placeholder="https://api.openai.com/v1"
                     value={config.baseUrl}
                     onChange={(event) => onChange({ baseUrl: event.target.value })}
+                    className={FIELD_INPUT}
                   />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="model">模型</Label>
+                </FieldRow>
+                <FieldRow htmlFor="apiKey" label="API Key" required>
+                  <div className="relative w-full">
+                    <Input
+                      id="apiKey"
+                      type={showApiKey ? "text" : "password"}
+                      autoComplete="off"
+                      spellCheck={false}
+                      placeholder="sk-…"
+                      value={config.apiKey}
+                      onChange={(event) => onChange({ apiKey: event.target.value })}
+                      className={`${FIELD_INPUT} pr-10`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowApiKey((v) => !v)}
+                      aria-label={showApiKey ? "隐藏 API Key" : "显示 API Key"}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-soft transition-colors hover:text-ink"
+                    >
+                      {showApiKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    </button>
+                  </div>
+                </FieldRow>
+                <FieldRow htmlFor="model" label="模型">
                   <Input
                     id="model"
                     spellCheck={false}
                     placeholder="gpt-4o-mini"
                     value={config.model}
                     onChange={(event) => onChange({ model: event.target.value })}
+                    className={FIELD_INPUT}
                   />
-                </div>
-              </div>
+                </FieldRow>
 
-              <div className="flex items-center gap-3">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => void handleTest()}
-                  disabled={testing}
-                >
-                  {testing ? <Loader2 className="animate-spin" /> : <PlugZap />}
-                  测试连接
-                </Button>
-                {probeResult && (
+                {/* 动作行：与被校验的字段同属一个容器，而非游离在外 */}
+                <div className="flex items-center justify-between gap-3 bg-surface-soft px-4 py-2.5">
                   <span
-                    className={`text-xs ${probeResult.ok ? "text-success" : "text-error"}`}
+                    className={`min-w-0 truncate text-xs ${
+                      probeResult
+                        ? probeResult.ok
+                          ? "text-success"
+                          : "text-error"
+                        : "text-muted-soft"
+                    }`}
                   >
-                    {probeResult.message}
+                    {probeResult ? probeResult.message : "填好后可验证端点连通性"}
                   </span>
-                )}
-              </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="shrink-0 text-muted hover:text-ink"
+                    onClick={() => void handleTest()}
+                    disabled={testing}
+                  >
+                    {testing ? <Loader2 className="animate-spin" /> : <PlugZap />}
+                    测试连接
+                  </Button>
+                </div>
+              </FieldGroup>
             </Section>
 
             <SttModelsTab config={config} onChange={onChange} />
@@ -213,7 +228,7 @@ export function SettingsView({
         </TabsContent>
 
         <TabsContent value="processing">
-          <div className="glass card-shadow flex flex-col gap-8 rounded-2xl border border-hairline p-8">
+          <div className="raised-card flex flex-col gap-8 p-8">
             <Section title="转写与生成" icon={Globe}>
               <ToggleRow
                 label="Whisper 语言"
@@ -255,7 +270,7 @@ export function SettingsView({
         </TabsContent>
 
         <TabsContent value="engine">
-          <div className="glass card-shadow flex flex-col gap-8 rounded-2xl border border-hairline p-8">
+          <div className="raised-card flex flex-col gap-8 p-8">
             <EngineTab config={config} onChange={onChange} />
           </div>
         </TabsContent>
@@ -286,6 +301,43 @@ function Section({
     </section>
   )
 }
+
+/** 分组字段容器：多个字段共用一圈描边，内部用发丝线分隔（macOS 系统设置风格）。
+ *  bg-canvas 比外层 raised-card 更暗，整组读作下沉的字段井。 */
+function FieldGroup({ children }: { children: ReactNode }) {
+  return (
+    <div className="divide-y divide-hairline-soft overflow-hidden rounded-xl border border-hairline bg-canvas">
+      {children}
+    </div>
+  )
+}
+
+/** 字段行：左侧固定宽标签 + 右侧无边框输入。焦点反馈由整行底色提供。 */
+function FieldRow({
+  htmlFor,
+  label,
+  required,
+  children
+}: {
+  htmlFor: string
+  label: string
+  required?: boolean
+  children: ReactNode
+}) {
+  return (
+    <div className="flex items-center gap-4 px-4 transition-colors focus-within:bg-surface-soft">
+      <Label htmlFor={htmlFor} className="w-[92px] shrink-0 text-muted">
+        {label}
+        {required && <span className="ml-0.5 text-primary">*</span>}
+      </Label>
+      {children}
+    </div>
+  )
+}
+
+/** 分组字段内的无边框输入样式（抹除 Input 自带的框、底色、焦点环）。 */
+const FIELD_INPUT =
+  "h-12 border-0 bg-transparent px-0 text-sm focus-visible:border-0 focus-visible:ring-0"
 
 function ToggleRow({
   label,
@@ -445,40 +497,63 @@ function SttModelsTab({ config, onChange }: { config: UserConfig; onChange: (pat
 
   return (
     <Section title="语音转写 (STT)" icon={AudioLines}>
-      {STT_MODELS.map((m) => {
-        const st = states[m.id]
-        const selected = config.sttModel === m.id
-        return (
-          <div key={m.id} className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => onChange({ sttModel: m.id })}
-              className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${
-                selected ? "border-primary/60 bg-surface-card" : "border-hairline hover:bg-surface-soft"
+      <FieldGroup>
+        {STT_MODELS.map((m) => {
+          const st = states[m.id]
+          const selected = config.sttModel === m.id
+          return (
+            <div
+              key={m.id}
+              className={`flex items-stretch transition-colors ${
+                selected ? "bg-surface-card" : "hover:bg-surface-soft"
               }`}
             >
-              <span className={`size-1.5 shrink-0 rounded-full ${selected ? "bg-primary" : "bg-hairline"}`} />
-              <span className="text-sm font-medium text-ink">{m.label}</span>
-              <span className="text-xs text-muted-soft">{m.size} · {m.description}</span>
-              <span className="ml-auto text-xs">
+              {/* 选择区：占满剩余宽度，与下载按钮互不嵌套（button 不可嵌套） */}
+              <button
+                type="button"
+                onClick={() => onChange({ sttModel: m.id })}
+                aria-pressed={selected}
+                className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left"
+              >
+                {/* 选中指示：实心圆环，未选中仅留描边 */}
+                <span
+                  className={`size-3.5 shrink-0 rounded-full border-2 transition-colors ${
+                    selected ? "border-primary bg-primary/30" : "border-hairline"
+                  }`}
+                />
+                <span className="w-[76px] shrink-0 text-sm font-medium text-ink">{m.label}</span>
+                <span className="min-w-0 flex-1 truncate text-xs text-muted-soft">
+                  {m.size} · {m.description}
+                </span>
+              </button>
+
+              {/* 右侧状态位：撑满行高后内部居中，使对勾 / 转圈 / 下载按钮 三种不同高度的元素基线一致 */}
+              <div className="flex w-[104px] shrink-0 items-center justify-end self-stretch pr-4">
                 {st?.checking ? (
-                  <Loader2 className="size-3 animate-spin text-muted" />
+                  <Loader2 className="size-3.5 animate-spin text-muted" />
                 ) : st?.available ? (
-                  <span className="text-success">已下载</span>
+                  <CheckCircle2 className="size-3.5 text-success" />
                 ) : (
-                  <span className="text-muted-soft">未下载</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted hover:text-ink"
+                    disabled={st?.downloading}
+                    onClick={() => void handleDownload(m.id)}
+                  >
+                    {st?.downloading ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Download className="size-3.5" />
+                    )}
+                    下载
+                  </Button>
                 )}
-              </span>
-            </button>
-            {!st?.available && (
-              <Button size="sm" onClick={() => void handleDownload(m.id)} disabled={st?.downloading}>
-                {st?.downloading ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
-                下载
-              </Button>
-            )}
-          </div>
-        )
-      })}
+              </div>
+            </div>
+          )
+        })}
+      </FieldGroup>
     </Section>
   )
 }

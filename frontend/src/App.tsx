@@ -33,6 +33,7 @@ import { useSessionManager } from "@/lib/sessions"
 import { testLlmConnection, type ProbeResult } from "@/lib/llmProbe"
 import { DEFAULT_STT_MODEL, findSttModel, STT_MODELS } from "@/lib/stt-models"
 import { tauriHttpFetch } from "@/lib/tauri"
+import { checkForUpdate, type UpdateInfo } from "@/lib/updater"
 
 /** macOS Overlay 标题栏需为红绿灯按钮留出左侧空间 */
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent)
@@ -78,6 +79,7 @@ function App() {
   const [view, setView] = useState<View>("home")
   const [url, setUrl] = useState("")
   const [config, setConfig] = useState<UserConfig>(DEFAULT_CONFIG)
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
   const [configReady, setConfigReady] = useState(false)
   const [customPromptOpen, setCustomPromptOpen] = useState(false)
   const [loginOpen, setLoginOpen] = useState(false)
@@ -88,7 +90,7 @@ function App() {
   const [selectedMode, setSelectedMode] = useState<PromptMode>("summary")
   // 待确认删除的 session
   const [pendingDelete, setPendingDelete] = useState<string | null>(null)
-  const { sessions, start, generate, cancel, cancelMode, remove } = useSessionManager({ config })
+  const { sessions, start, reprepare, generate, cancel, cancelMode, remove } = useSessionManager({ config })
 
   const activeSession =
     activeRunId ? (sessions.find((s) => s.run_id === activeRunId) ?? null) : null
@@ -105,6 +107,19 @@ function App() {
       .finally(() => {
         if (active) setConfigReady(true)
       })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  // 启动后台检查更新（失败静默，仅 hasUpdate=true 时设置页出现下载按钮）
+  useEffect(() => {
+    let active = true
+    checkForUpdate()
+      .then((info) => {
+        if (active && info.hasUpdate) setUpdateInfo(info)
+      })
+      .catch(() => {})
     return () => {
       active = false
     }
@@ -245,12 +260,12 @@ function App() {
   }, [pendingDelete, handleRemoveSession])
 
   return (
-    <div className="relative flex h-screen bg-canvas text-ink">
-      {/* 环境光层：玻璃面板在其上折射 */}
+    <div className="relative flex h-screen bg-shell text-ink">
+      {/* 环境光层：只铺在最暗外壳上，不透明面板压在它上方形成层次 */}
       <div aria-hidden className="ambient-bg pointer-events-none absolute inset-0" />
 
-      {/* ── 侧边栏 ── */}
-      <aside className="glass-strong relative z-10 flex w-[232px] shrink-0 flex-col border-r border-hairline">
+      {/* ── 侧边栏：留在外壳层（无框无玻璃），只有中间面板有边框 ── */}
+      <aside className="relative z-10 flex w-[232px] shrink-0 flex-col">
         <DragRegion className={`h-12 shrink-0 select-none ${isMac ? "pl-[70px]" : ""}`} />
         <DragRegion className="flex select-none items-center gap-2 px-5 pb-5">
           <SpikeMark className="size-4 text-ink" />
@@ -279,18 +294,14 @@ function App() {
           />
         </div>
 
-        {/* 左下角：设置入口 + 状态行 */}
-        <div className="flex shrink-0 flex-col gap-1 border-t border-hairline px-3 pt-2">
+        {/* 左下角：设置入口 */}
+        <div className="flex shrink-0 flex-col gap-1 border-t border-hairline-soft px-3 pb-3 pt-2">
           <SidebarButton
             icon={Settings2}
             label="设置"
             active={view === "settings"}
             onClick={() => setView("settings")}
           />
-          <div className="flex items-center gap-2 px-5 pb-5 text-xs text-muted-soft">
-            <span className="size-1.5 rounded-full bg-success" />
-            本地引擎就绪 · v0.1.0
-          </div>
         </div>
       </aside>
 
@@ -298,114 +309,113 @@ function App() {
       <div className="relative z-10 flex min-w-0 flex-1 flex-col">
         <DragRegion className="h-12 shrink-0 select-none" />
 
-        <div className="min-h-0 flex-1 overflow-y-auto scrollbar-none">
-          {view === "settings" ? (
-            <SettingsView
-              key={settingsInitialTab}
-              config={config}
-              onChange={patchConfig}
-              profile={config.biliProfile}
-              onLogin={() => setLoginOpen(true)}
-              onLogout={() => void handleLogout()}
-              initialTab={settingsInitialTab}
-              onTestConnection={handleTestConnection}
-            />
-          ) : view === "session" && activeSession ? (
-            <div className="mx-auto w-full max-w-[1000px] px-6 pb-10 pt-4">
-              <ModeResultTabs
-                session={activeSession}
-                initialMode={selectedMode}
-                onGenerate={(mode, source) => void generate(activeRunId!, mode, source)}
-                onCancelMode={(mode) => void cancelMode(activeRunId!, mode)}
-                onEditCustom={() => setCustomPromptOpen(true)}
+        {/* 内嵌弧形面板：overflow-hidden 必需，否则滚动内容会削平圆角 */}
+        <div className="pane-inset mb-2.5 mr-2.5 flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="min-h-0 flex-1 overflow-y-auto scrollbar-none">
+            {view === "settings" ? (
+              <SettingsView
+                key={settingsInitialTab}
+                config={config}
+                onChange={patchConfig}
+                profile={config.biliProfile}
+                onLogin={() => setLoginOpen(true)}
+                onLogout={() => void handleLogout()}
+                initialTab={settingsInitialTab}
+                onTestConnection={handleTestConnection}
+                updateInfo={updateInfo}
               />
-            </div>
-          ) : (
-            <div className="mx-auto flex w-full max-w-[880px] flex-col items-center px-6 pb-10 pt-[8vh]">
-              <h1 className="display-lg text-center text-ink">
-                {greeting()}，把链接交给我吧
-              </h1>
-              <p className="mt-3 text-center text-sm text-muted">
-                粘贴视频链接，自动抓取字幕。四种模式基于同一份字幕按需生成。
-              </p>
-
-              <div className="glass card-shadow mt-8 w-full rounded-2xl border border-hairline p-4">
-                <UrlForm
-                  variant="hero"
-                  url={url}
-                  onUrlChange={setUrl}
-                  onSubmit={handleSubmit}
-                  loading={false}
-                  disabled={!url.trim() || !config.apiKey.trim()}
+            ) : view === "session" && activeSession ? (
+              <div className="mx-auto w-full max-w-[1000px] px-6 pb-10 pt-4">
+                <ModeResultTabs
+                  session={activeSession}
+                  initialMode={selectedMode}
+                  onGenerate={(mode, source) => void generate(activeRunId!, mode, source)}
+                  onCancelMode={(mode) => void cancelMode(activeRunId!, mode)}
+                  onEditCustom={() => setCustomPromptOpen(true)}
+                  onRetryPrepare={() => void reprepare(activeRunId!, selectedMode)}
                 />
+              </div>
+            ) : (
+              <div className="mx-auto flex w-full max-w-[880px] flex-col items-center px-6 pb-10 pt-[8vh]">
+                <h1 className="display-lg text-center text-ink">
+                  {greeting()}，把链接交给我吧
+                </h1>
 
-                {/* STT 模型选择（无字幕转写用） */}
-                <div className="mt-3 flex items-center gap-2">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="secondary" size="sm">
-                        <AudioLines className="size-3.5" />
-                        转写模型：{findSttModel(config.sttModel).label}
-                        <ChevronDown className="size-3" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                      {STT_MODELS.map((m) => (
-                        <DropdownMenuItem key={m.id} onClick={() => patchConfig({ sttModel: m.id })}>
-                          {m.label}
-                          <span className="ml-1 text-xs text-muted-soft">{m.size}</span>
+                <div className="raised-card mt-8 w-full p-4">
+                  <UrlForm
+                    variant="hero"
+                    url={url}
+                    onUrlChange={setUrl}
+                    onSubmit={handleSubmit}
+                    loading={false}
+                    disabled={!url.trim() || !config.apiKey.trim()}
+                  />
+
+                  {/* STT 模型选择（无字幕转写用） */}
+                  <div className="mt-3 flex items-center gap-2">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="secondary" size="sm">
+                          <AudioLines className="size-3.5" />
+                          转写模型：{findSttModel(config.sttModel).label}
+                          <ChevronDown className="size-3" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start">
+                        {STT_MODELS.map((m) => (
+                          <DropdownMenuItem key={m.id} onClick={() => patchConfig({ sttModel: m.id })}>
+                            {m.label}
+                            <span className="ml-1 text-xs text-muted-soft">{m.size}</span>
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="secondary" size="sm">
+                          <FileText className="size-3.5" />
+                          字幕来源：{config.subtitleSource === "audio" ? "音频转写" : "视频网站字幕"}
+                          <ChevronDown className="size-3" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start">
+                        <DropdownMenuItem onClick={() => patchConfig({ subtitleSource: "audio" })}>
+                          音频转写
+                          <span className="ml-1 text-xs text-muted-soft">推荐</span>
                         </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="secondary" size="sm">
-                        <FileText className="size-3.5" />
-                        字幕来源：{config.subtitleSource === "audio" ? "音频转写" : "视频网站字幕"}
-                        <ChevronDown className="size-3" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                      <DropdownMenuItem onClick={() => patchConfig({ subtitleSource: "audio" })}>
-                        音频转写
-                        <span className="ml-1 text-xs text-muted-soft">推荐</span>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => patchConfig({ subtitleSource: "subtitle" })}>
-                        视频网站字幕
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                  <span className="text-xs text-muted-soft">
-                    无字幕时本地转写用 · {findSttModel(config.sttModel).size}
-                  </span>
+                        <DropdownMenuItem onClick={() => patchConfig({ subtitleSource: "subtitle" })}>
+                          视频网站字幕
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid w-full gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  {MODE_CARDS.map((card) => {
+                    const Icon = card.icon
+                    const active = selectedMode === card.value
+                    return (
+                      <button
+                        key={card.value}
+                        type="button"
+                        onClick={() => handleModeCard(card.value)}
+                        className={`flex flex-col gap-2 rounded-xl border p-4 text-left transition-colors ${
+                          active
+                            ? "border-primary/60 bg-surface-card"
+                            : "border-hairline hover:bg-surface-soft"
+                        }`}
+                      >
+                        <Icon className={`size-4 ${active ? "text-primary" : "text-muted"}`} />
+                        <span className="text-sm font-medium text-ink">{card.label}</span>
+                        <span className="text-xs text-muted">{card.description}</span>
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
-
-              <div className="mt-4 grid w-full gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                {MODE_CARDS.map((card) => {
-                  const Icon = card.icon
-                  const active = selectedMode === card.value
-                  return (
-                    <button
-                      key={card.value}
-                      type="button"
-                      onClick={() => handleModeCard(card.value)}
-                      className={`glass flex flex-col gap-2 rounded-xl border p-4 text-left transition-colors ${
-                        active
-                          ? "border-primary/60 bg-surface-card"
-                          : "border-hairline hover:bg-surface-soft"
-                      }`}
-                    >
-                      <Icon className={`size-4 ${active ? "text-primary" : "text-muted"}`} />
-                      <span className="text-sm font-medium text-ink">{card.label}</span>
-                      <span className="text-xs text-muted">{card.description}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 

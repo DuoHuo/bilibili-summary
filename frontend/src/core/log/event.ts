@@ -47,12 +47,26 @@ export function buildLogEvent(
   return deepMapStrings(structurallyRedacted, redactFreeText) as LogEvent
 }
 
-/** 默认 noop 实现：level 过滤 + 直接构造但不输出（Phase 2 才接落盘 sink） */
-export function createNoopLogger(threshold: LogLevel = "INFO"): Logger {
+/**
+ * 可注入任意 sink 的 Logger 工厂；脱敏在 buildLogEvent 内强制发生，
+ * sink 收到的是已脱敏、已校验的 LogEvent —— 不存在绕过脱敏的旁路。
+ * sink 异常被吞咽（日志是辅助通道，不得拖垮主流程）；事件名/形状不合规则在 buildLogEvent 阶段抛错（编程错误，不吞）。
+ */
+export function createLogger(sink: (e: LogEvent) => void, threshold: LogLevel = "INFO"): Logger {
   return {
     log(level, event, fields) {
       if (!shouldLog(level, threshold)) return
-      buildLogEvent(level, event, fields) // 强制走脱敏路径，即使当前是 noop，也验证事件形状合规
+      const evt = buildLogEvent(level, event, fields) // 强制脱敏 + 事件名校验（不合规则抛错，不吞）
+      try {
+        sink(evt)
+      } catch {
+        // sink 写入失败静默（日志不得反噬主流程）
+      }
     }
   }
+}
+
+/** noop 兼容：退化为 sink=()=>{} 的特例；保持原签名与行为，现有调用方与测试零改动 */
+export function createNoopLogger(threshold: LogLevel = "INFO"): Logger {
+  return createLogger(() => {}, threshold)
 }

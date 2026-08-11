@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.1",
   "scripts": {
-    "dev": "tauri dev",
+    "dev": "pnpm clean && tauri dev",
     "build": "tauri build",
     "test": "pnpm --filter ./frontend test",
     "check": "pnpm --filter ./frontend check",

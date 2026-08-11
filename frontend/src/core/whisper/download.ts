@@ -35,7 +35,7 @@ async function resolveCookieArgs(
  * 若提供 cacheDir：`{cacheDir}/{key}.wav` 已存在则直接复用（跳过下载）。
  * 未提供 cacheDir 时行为与旧版一致（兼容测试契约）。 */
 export async function downloadAudioWithYtdlp(
-  deps: Pick<SummarizeDeps, "runner" | "isFile" | "writeFile" | "onProgress">,
+  deps: Pick<SummarizeDeps, "runner" | "isFile" | "writeFile" | "onProgress" | "resolveFfmpegPath">,
   url: string,
   cookie: string | null,
   outputDir: string,
@@ -53,6 +53,9 @@ export async function downloadAudioWithYtdlp(
   const outputTemplate = `${outputDir}/${outputName}.%(ext)s`
   const cookieArgs = await resolveCookieArgs(deps, url, cookie, outputDir)
 
+  // 解析 ffmpeg 目录：未提供 resolveFfmpegPath 时（如测试）不传，yt-dlp 走系统 PATH fallback
+  const ffmpegDir = deps.resolveFfmpegPath ? await deps.resolveFfmpegPath().catch(() => undefined) : undefined
+  const ffmpegArgs = ffmpegDir ? ["--ffmpeg-location", ffmpegDir] : []
   const result = await deps.runner(
     "yt-dlp",
     [
@@ -66,6 +69,7 @@ export async function downloadAudioWithYtdlp(
       "-o",
       outputTemplate,
       ...cookieArgs,
+      ...ffmpegArgs,
       url
     ],
     { cwd: outputDir, stage: "whisper", onLine: (line) => deps.onProgress?.("whisper", line) }
@@ -75,6 +79,7 @@ export async function downloadAudioWithYtdlp(
       traceId,
       context: {
         exitCode: result.exitCode,
+        args: ["yt-dlp", "-x", "--audio-format", "wav", "--audio-quality", "0", "--postprocessor-args", "-ar 16000 -ac 1", "-o", outputTemplate, ...cookieArgs, ...ffmpegArgs, url],
         stdoutTail: tailLines(result.stdout, 200),
         stderrTail: tailLines(result.stderr, 200)
       }
@@ -88,7 +93,7 @@ export async function downloadAudioWithYtdlp(
 
 /** 用 yt-dlp 下载视频（截图用）。移植自 download_video_with_ytdlp。 */
 export async function downloadVideoWithYtdlp(
-  deps: Pick<SummarizeDeps, "runner" | "isFile" | "writeFile" | "onProgress">,
+  deps: Pick<SummarizeDeps, "runner" | "isFile" | "writeFile" | "onProgress" | "resolveFfmpegPath">,
   url: string,
   cookie: string | null,
   outputDir: string
@@ -97,10 +102,13 @@ export async function downloadVideoWithYtdlp(
   const outputName = buildWhisperAudioName(url)
   const outputTemplate = `${outputDir}/${outputName}.%(ext)s`
   const cookieArgs = await resolveCookieArgs(deps, url, cookie, outputDir)
+  // 解析 ffmpeg 目录：合并 mp4 也需 ffmpeg；未提供时不传走系统 PATH fallback
+  const ffmpegDir = deps.resolveFfmpegPath ? await deps.resolveFfmpegPath().catch(() => undefined) : undefined
+  const ffmpegArgs = ffmpegDir ? ["--ffmpeg-location", ffmpegDir] : []
 
   const result = await deps.runner(
     "yt-dlp",
-    ["-f", "bestvideo+bestaudio/best", "--merge-output-format", "mp4", "-o", outputTemplate, ...cookieArgs, url],
+    ["-f", "bestvideo+bestaudio/best", "--merge-output-format", "mp4", "-o", outputTemplate, ...cookieArgs, ...ffmpegArgs, url],
     { cwd: outputDir, stage: "whisper", onLine: (line) => deps.onProgress?.("whisper", line) }
   )
   if (result.exitCode !== 0) {
@@ -108,6 +116,7 @@ export async function downloadVideoWithYtdlp(
       traceId,
       context: {
         exitCode: result.exitCode,
+        args: ["yt-dlp", "-f", "bestvideo+bestaudio/best", "--merge-output-format", "mp4", "-o", outputTemplate, ...cookieArgs, ...ffmpegArgs, url],
         stdoutTail: tailLines(result.stdout, 200),
         stderrTail: tailLines(result.stderr, 200)
       }

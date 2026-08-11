@@ -4,7 +4,7 @@ import { AppError } from "../errors"
 import { downloadAudioWithYtdlp, downloadVideoWithYtdlp } from "./download"
 
 function makeDeps(overrides: Partial<SummarizeDeps> = {}): {
-  deps: Pick<SummarizeDeps, "runner" | "isFile" | "writeFile" | "onProgress">
+  deps: Pick<SummarizeDeps, "runner" | "isFile" | "writeFile" | "onProgress" | "resolveFfmpegPath">
   calls: Array<{ program: string; args: string[] }>
 } {
   const calls: Array<{ program: string; args: string[] }> = []
@@ -36,6 +36,22 @@ describe("downloadAudioWithYtdlp", () => {
     expect(calls[0].args).toContain("wav")
     expect(calls[0].args).toContain("-ar 16000 -ac 1")
     expect(calls[0].args[calls[0].args.length - 1]).toBe("https://www.bilibili.com/video/BV1xx411c7mD")
+    // 未提供 resolveFfmpegPath 时不传 --ffmpeg-location（走系统 PATH fallback）
+    expect(calls[0].args).not.toContain("--ffmpeg-location")
+  })
+
+  it("resolveFfmpegPath 提供时传 --ffmpeg-location <dir>", async () => {
+    const { deps, calls } = makeDeps({ resolveFfmpegPath: async () => "/app/binaries" })
+    await downloadAudioWithYtdlp(deps, "https://www.bilibili.com/video/BV1xx411c7mD", null, "/tmp/r")
+    const idx = calls[0].args.indexOf("--ffmpeg-location")
+    expect(idx).toBeGreaterThanOrEqual(0)
+    expect(calls[0].args[idx + 1]).toBe("/app/binaries")
+  })
+
+  it("resolveFfmpegPath 解析失败时不抛错（fallback 不传 --ffmpeg-location）", async () => {
+    const { deps, calls } = makeDeps({ resolveFfmpegPath: async () => { throw new Error("no ffmpeg") } })
+    await expect(downloadAudioWithYtdlp(deps, "https://www.bilibili.com/video/BV1xx411c7mD", null, "/tmp/r")).resolves.toBeDefined()
+    expect(calls[0].args).not.toContain("--ffmpeg-location")
   })
 
   it("缓存命中：cacheDir 已有同名 wav 时跳过下载", async () => {
