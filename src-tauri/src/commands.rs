@@ -186,20 +186,54 @@ pub async fn ensure_external_binary(app: AppHandle, program: String) -> Result<S
     resolve_binary(&app, &program).await.map(|p| p.to_string_lossy().to_string())
 }
 
-/// Homebrew 解析：PATH 优先，缺失则 brew install <brew_pkg>，再查 PATH。
+/// 查找 brew：GUI 应用（Finder/Dock 启动）不继承 shell 的 PATH（不含 /opt/homebrew/bin），
+/// 因此先按绝对路径探测常见安装位置，再回退 PATH 查找。
+/// 仅 macOS 编译：Linux/Windows 的 whisper-cli 走 PATH → 缓存 → 下载，不经过 brew。
+#[cfg(target_os = "macos")]
+fn find_brew() -> Option<PathBuf> {
+    for p in ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"] {
+        let b = PathBuf::from(p);
+        if b.is_file() {
+            return Some(b);
+        }
+    }
+    find_in_path("brew")
+}
+
+/// 在 brew 所在 bin 目录里找程序（PATH 不含 /opt/homebrew/bin 时兜底）。
+#[cfg(target_os = "macos")]
+fn find_in_brew_bin(brew: &PathBuf, program: &str) -> Option<PathBuf> {
+    let dir = brew.parent()?;
+    let candidate = dir.join(program);
+    if candidate.is_file() {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
+/// Homebrew 解析：先定位 brew（绝对路径优先），已装则直接用，缺失则 brew install <brew_pkg>。
+#[cfg(target_os = "macos")]
 async fn resolve_via_brew(program: &str, brew_pkg: &str) -> Result<PathBuf, String> {
-    if let Some(found) = find_in_path(program) {
+    let brew = find_brew().ok_or_else(|| {
+        "未检测到 Homebrew（brew 不在 PATH，常见安装目录也不存在），请安装 Homebrew 或手动安装 whisper-cpp".to_string()
+    })?;
+    // 已装则直接用：brew bin 目录优先（GUI 环境 PATH 缺失），再 PATH
+    if let Some(found) = find_in_brew_bin(&brew, program).or_else(|| find_in_path(program)) {
         return Ok(found);
     }
-    let status = Command::new("brew")
+    let status = Command::new(&brew)
         .args(["install", brew_pkg])
         .status()
         .await
-        .map_err(|e| format!("调用 Homebrew 失败（请确认已安装 brew）: {e}"))?;
+        .map_err(|e| format!("调用 Homebrew 失败: {e}"))?;
     if !status.success() {
         return Err(format!("Homebrew 安装 {brew_pkg} 失败，请检查网络或手动安装"));
     }
-    find_in_path(program).ok_or_else(|| format!("{program} 安装后未出现在 PATH，请刷新终端后重试"))
+    // 安装后同样先查 brew bin 目录，再 PATH
+    find_in_brew_bin(&brew, program)
+        .or_else(|| find_in_path(program))
+        .ok_or_else(|| format!("{program} 安装后未找到，请检查 brew 安装情况"))
 }
 
 /// 统一二进制解析决策树：1) PATH 2) app 缓存（标准名，无平台后缀）3) 下载并存成标准名。
